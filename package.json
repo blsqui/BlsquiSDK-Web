@@ -1,0 +1,42 @@
+{
+  "name": "@blsqui/sdk-web",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Official Web SDK for Blsqui — Flow blockchain Local loopback Auth integration & in-game transaction dialogs.",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/blsqui/BlsquiSDK-Web.git"
+  },
+  "keywords": [
+    "blsqui",
+    "flow",
+    "cadence",
+    "flix",
+    "web3",
+    "sdk"
+  ],
+  "author": "Blsqui",
+  "license": "MIT",
+  "devDependencies": {
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3"
+  }
+}
