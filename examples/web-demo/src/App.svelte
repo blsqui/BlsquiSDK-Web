@@ -39,6 +39,7 @@
 
       // 判定処理例
       if (result.status === 'SEALED') {
+        console.log(result);
         isEntryCompleted = true;
         statusMessage = `🎉 Entry sealed! TX: ${result.txId?.slice(0, 8)}...`;
         autoDriveExit = true;
