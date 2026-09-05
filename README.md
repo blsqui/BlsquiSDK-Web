@@ -30,9 +30,11 @@ pnpm add @blsqui/sdk-web
 yarn add @blsqui/sdk-web
 ```
 
+---
+
 # 📖 Usage
 
-### 1. Zero-Config Tournament Entry (Default Modal)
+## 1. Zero-Config Tournament Entry (Default Modal)
 
 By default, @blsqui/sdk-web includes a ready-to-use tournament entry confirmation dialog presets for Testnet (10 FLOW entry):
 
@@ -55,7 +57,7 @@ async function handleEnterTournament() {
 }
 ```
 
-### 2. Custom FLIX ID, Mainenet setting, Vervose setting and Custome modal use
+## 2. Custom FLIX ID, Mainenet setting, Vervose setting and Custome modal use
 
 If your game already provides its own UI (e.g. inventory screen, garage shop, or custom canvas HUD), set `useDefaultModal: false` to bypass the built-in modal and trigger transactions directly:
 
@@ -79,25 +81,25 @@ async function purchaseNitroUpgrade() {
 }
 ```
 
-### 3. Display Modes: Popup (tab) vs Embedded (iframe)
+## 3. Display Modes: Popup (tab) vs Embedded (iframe)
 
 Cross-origin Passkeys (WebAuthn) have varying security and storage restrictions across browsers (specifically Safari / iOS WebKit). @blsqui/sdk-web gives you full control over how the signing screen is presented:
 
 ```ts
 const result = await BlsquiSDK.requestTransaction({
-  // Option 1: 'tab' (Default)
+  // Option 1: 'tab'
   // Opens a centered popup window. Guarantees 100% native Passkey / Face ID / Touch ID
   // compatibility across Safari, iOS, Chrome, and Android.
   displayMode: 'tab', // IFrameではなくポップアップ(デスクトップ環境)/ 別タブ(モバイル環境)で表示します。
 
-  // Option 2: 'iframe'
+  // Option 2: 'iframe' (Default)
   // Directly embeds an iframe modal overlay into your game viewport.
-  // Ideal for desktop Chromium browsers (Chrome / Brave / Edge).
+  // Ideal for desktop Chromium browsers.
   // displayMode: 'iframe',
 });
 ```
 
-### 4. Customizing Built-in Modal Texts & Localization
+## 4. Customizing Built-in Modal Texts & Localization
 
 You can customize the emoji icon, header title, description text, and button labels of the built-in confirmation dialog via `modalContent`. This is ideal for internationalization (i18n) or non-tournament purchases (e.g. skin shops, battle passes, or energy refills):
 
@@ -129,6 +131,8 @@ async function handleBuySeasonPass() {
   }
 }
 ```
+
+---
 
 ## ⚙️ Configuration Reference
 
@@ -169,6 +173,8 @@ interface TransactionResult {
   token?: string;
 }
 ```
+
+---
 
 ## 📄 License
 
