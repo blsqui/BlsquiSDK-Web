@@ -121,7 +121,7 @@ export class BlsquiSDK {
   private static openGatewayIframe(url: string): void {
     this.closeIframe();
 
-    // 背景オーバーレイ（背景の暗転・ブラー処理）の生成
+    // 背景オーバーレイ（背景の暗転・blur処理）の生成
     const overlay = document.createElement('div');
     overlay.id = 'blsqui-iframe-overlay';
     overlay.style.cssText = `
