@@ -30,7 +30,7 @@ pnpm add @blsqui/sdk-web
 yarn add @blsqui/sdk-web
 ```
 
-## 📖 Usage
+# 📖 Usage
 
 ### 1. Zero-Config Tournament Entry (Default Modal)
 
@@ -45,11 +45,8 @@ async function handleEnterTournament() {
 
   // トランザクション結果の判定
   if (result.status === 'SEALED') {
-    console.log('🎉 大会エントリーが確定しました！ TX ID:', result.txId);
-    console.log('プレイヤーアドレス:', result.payer);
-    console.log('トランザクション照会用識別番号 (256-bit):', result.nonce);
+    console.log('エントリーが確定しました！ TX ID:', result.txId, 'プレイヤーアドレス:', result.payer, 'トランザクション照会用識別番号 (256-bit):', result.nonce);
   } else if (result.status === 'CANCELED') {
-    // ユーザーによる確認画面のキャンセルまたは画面クローズ
     console.log('ユーザーにより処理がキャンセルされました。');
   } else {
     // トランザクション実行エラー（残高不足等）またはタイムアウト(FAILED or EXPIRED or TIMEOUT)
@@ -131,6 +128,7 @@ async function handleBuySeasonPass() {
     console.log('🎉 シーズンパスのアンロックが完了しました！ TX:', result.txId);
   }
 }
+```
 
 ## ⚙️ Configuration Reference
 
