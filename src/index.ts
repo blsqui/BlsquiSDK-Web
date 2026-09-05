@@ -2,143 +2,126 @@ import type { TransactionOptions, TransactionResult, BlsquiStatus, BlsquiDisplay
 
 export * from './types.js';
 
+/**
+ * BlsquiSDK
+ */
 export class BlsquiSDK {
-  public static readonly MAINNET_SIGNER_URL: string = 'https://wallet.blsqui.net/transaction';
-  public static readonly TESTNET_SIGNER_URL: string = 'https://lab.blsqui.net/transaction';
+  // --- エンドポイント設定 ---
+  public static readonly MAINNET_GATEWAY_URL: string = 'https://wallet.blsqui.net/transaction';
+  public static readonly TESTNET_GATEWAY_URL: string = 'https://lab.blsqui.net/transaction';
+  public static readonly MAINNET_POLL_API: string = 'https://wallet.blsqui.net/api/status';
+  public static readonly TESTNET_POLL_API: string = 'https://lab.blsqui.net/api/status';
 
-  public static readonly MAINNET_POLL_API: string = 'https://signer.blsqui.net/api/status';
-  public static readonly TESTNET_POLL_API: string = 'https://testnet-signer.blsqui.net/api/status';
+  public static readonly DEFAULT_FLIX_ID: string = '6aae990ef2619581c28acbc4ac09594d4e9c3e0829bd5533eed88214ea6b3c3d'; // Default FLIXテンプレート (10 FLOW entry fee)
+  public static readonly POLL_INTERVAL_MS: number = 1500; // 1.5秒間隔ポーリングでステータスを確認
+  public static readonly TIMEOUT_SECONDS: number = 300.0; // ポーリング最大待機時間（5分）
 
-  public static readonly TESTNET_DEFAULT_TO: string = '0xa090f900023d6d34';
-  public static readonly MAINNET_DEFAULT_TO: string = '0xbba8a05053aef5de';
-
-  public static readonly DEFAULT_FLIX_ID: string = '6aae990ef2619581c28acbc4ac09594d4e9c3e0829bd5533eed88214ea6b3c3d';
-  public static readonly DEFAULT_AMOUNT: number = 10.0;
-
-  public static readonly POLL_INTERVAL_MS: number = 1500;
-  public static readonly TIMEOUT_SECONDS: number = 300.0;
-
+  // --- 状態管理（モーダル・通信 制御） ---
   private static activeModal: HTMLElement | null = null;
   private static activeIframeOverlay: HTMLElement | null = null;
   private static activeAbortController: AbortController | null = null;
   private static activePopupWindow: Window | null = null;
 
+  /**
+   * トランザクション要求を発行します。
+   * 署名画面を起動し、トランザクションがオンチェーンで確定（SEALED）するまで非同期で監視する。
+   * @param options 各種設定オプション
+   * @returns トランザクションの実行結果（ステータス、TxID、決済情報など）
+   */
   static async requestTransaction(options: TransactionOptions = {}): Promise<TransactionResult> {
-    const isTestnet = options.isTestnet ?? true;
-    const useDefaultModal = options.useDefaultModal ?? true;
-    const displayMode: BlsquiDisplayMode = options.displayMode ?? 'tab';
-    const verbose = options.verbose ?? false;
+    const isTestnet = options.isTestnet ?? true;                                     // テストネットかメインネットか
+    const useDefaultModal = options.useDefaultModal ?? true;                         // デフォルトのモーダルを使用するかどうか
+    const displayMode: BlsquiDisplayMode = options.displayMode ?? 'tab';             // IFrame or Tab
+    const verbose = options.verbose ?? false;                                        // Verboseフラグ
 
-    // 1. Resolve Target Signer Base URL
-    const baseUrl = isTestnet ? this.TESTNET_SIGNER_URL : this.MAINNET_SIGNER_URL;
+    const baseUrl = isTestnet ? this.TESTNET_GATEWAY_URL : this.MAINNET_GATEWAY_URL; // エンドポイント確定
+    const flixId = options.flixId || (useDefaultModal ? this.DEFAULT_FLIX_ID : '');  // FLIX ID確定
+    const mergedArgs: Record<string, string | number> = { ...(options.args || {}) }; // トランザクション引数（args）
 
-    // 2. Resolve FLIX ID
-    const flixId = options.flixId || (useDefaultModal ? this.DEFAULT_FLIX_ID : '');
+    const currentNonce = await this.generateClientNonce(); // トランザクション識別番号
+    const currentTime = Math.floor(Date.now() / 1000);     // 発行日時のタイムスタンプ
 
-    // 3. Consolidate args (amount and destination merged into args)
-    const mergedArgs: Record<string, string | number> = { ...(options.args || {}) };
-
-    // Resolve 'to' (destination)
-    if (options.destination) {
-      mergedArgs.to = options.destination;
-    } else if (useDefaultModal && !mergedArgs.to) {
-      mergedArgs.to = isTestnet ? this.TESTNET_DEFAULT_TO : this.MAINNET_DEFAULT_TO;
-    }
-
-    // Resolve 'price' (amount)
-    if (options.amount !== undefined) {
-      mergedArgs.price = String(options.amount);
-    } else if (useDefaultModal && mergedArgs.price === undefined) {
-      mergedArgs.price = String(this.DEFAULT_AMOUNT);
-    }
-
-    // 4. Generate Nonce & Timestamp
-    const currentNonce = await this.generateClientNonce();
-    const currentTime = Math.floor(Date.now() / 1000);
-
-    // 5. Build URL Query Parameters
+    // URLクエリパラメータの構築
     const params = new URLSearchParams({
       flix: flixId,
       issued_time: String(currentTime),
       nonce: currentNonce
     });
 
-    // Append all transaction arguments
+    // 任意の追加引数をクエリパラメータへ
     for (const [key, val] of Object.entries(mergedArgs)) {
       if (val !== undefined && val !== null && String(val).trim() !== '') {
         params.set(key, String(val));
       }
     }
-
     const fullUrl = `${baseUrl}?${params.toString()}`;
 
     if (verbose) {
       console.log(`[BlsquiSDK] Mode: ${useDefaultModal ? 'DefaultModal' : 'CustomModal'} [${displayMode}]`);
-      console.log(`[BlsquiSDK] Signer URL: ${fullUrl}`);
+      console.log(`[BlsquiSDK] Wallet Gateway URL: ${fullUrl}`);
     }
 
-    // Mode A: Skip default confirmation modal -> open directly via chosen displayMode
     if (!useDefaultModal) {
-      this.launchSigner(fullUrl, displayMode);
+      // パターンA: 独自UIを使用（即時起動）
+      this.launchGateway(fullUrl, displayMode);
       return this.pollTransactionStatus(isTestnet, currentNonce, verbose);
-    }
-
-    // Mode B: Show default confirmation modal first
-    const displayPrice = String(mergedArgs.price ?? this.DEFAULT_AMOUNT);
-
-    return new Promise<TransactionResult>((resolve) => {
-      this.showConfirmationModal({
-        amount: displayPrice,
-        modalContent: options.modalContent,
-        onCancel: () => {
-          this.closeModal();
-          resolve({
-            status: 'CANCELED',
-            nonce: currentNonce,
-            error: 'User canceled transaction'
-          });
-        },
-        onConfirm: async (setLoading) => {
-          setLoading(true);
-
-          if (verbose) {
-            console.log(`[BlsquiSDK] Launching signer via [${displayMode}]: ${fullUrl}`);
-          }
-
-          this.launchSigner(fullUrl, displayMode);
-
-          const result = await this.pollTransactionStatus(isTestnet, currentNonce, verbose);
-          this.closeModal();
-          resolve(result);
-        }
-      });
-    });
-  }
-
-  private static launchSigner(url: string, mode: BlsquiDisplayMode): void {
-    if (mode === 'iframe') {
-      this.mountSignerIframe(url);
     } else {
-      this.openSignerPopup(url);
+      // パターンB: 組み込みモーダルを表示
+      return new Promise<TransactionResult>((resolve) => {
+        this.showDefaultConfirmationModal({
+          modalContent: options.modalContent,
+          onCancel: () => {
+            this.closeModal();
+            resolve({
+                status: 'CANCELED',
+                nonce: currentNonce,
+                error: 'User canceled transaction'
+            });
+           },
+          onConfirm: async (setLoading) => {
+            setLoading(true);
+
+            if (verbose) {
+                console.log(`[BlsquiSDK] Launching signer via [${displayMode}]: ${fullUrl}`);
+            }
+
+            this.launchGateway(fullUrl, displayMode);
+
+            // オンチェーン確定までステータスを監視
+            const result = await this.pollTransactionStatus(isTestnet, currentNonce, verbose);
+            this.closeModal();
+            resolve(result);
+          }
+        });
+      });
     }
   }
 
-  private static openSignerPopup(url: string): void {
-    const width = 460;
-    const height = 740;
-    const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
-    const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
-
-    this.activePopupWindow = window.open(
-      url,
-      'BlsquiCheckout',
-      `width=${width},height=${height},left=${left},top=${top},menubar=no,status=no,resizable=yes`
-    );
+  /**
+   * 指定された表示モード（別タブ または iframe）で署名画面を展開します。
+   */
+  private static launchGateway(url: string, mode: BlsquiDisplayMode): void {
+    if (mode === 'iframe') {
+      this.openGatewayIframe(url);
+    } else {
+      this.openGatewayTab(url);
+    }
   }
 
-  private static mountSignerIframe(url: string): void {
+  /**
+   * 署名画面（ゲートウェイ）をページ内のiframeモーダルとして展開します。
+   *
+   * 【利用上の注意点 / 動作仕様】
+   * - 画面遷移を発生させず、同一ページ内でシームレスな決済UIを提供します。
+   * - 【推奨環境】主にデスクトップ版のモダンブラウザ（Chrome, Edge等）を対象としています。
+   *   ※ iOS Safari や一部のモバイルブラウザでは、WebKitのセキュリティ制限（トラッキング防止機構や
+   *   サードパーティコンテキスト分離）により生体認証シート（Face ID / Touch ID）が起動しないケースがあるため、
+   *   モバイル環境や汎用Webサイトでは標準のタブ/ポップアップ方式（openGatewayTab）を推奨します。
+   */
+  private static openGatewayIframe(url: string): void {
     this.closeIframe();
 
+    // 背景オーバーレイ（背景の暗転・ブラー処理）の生成
     const overlay = document.createElement('div');
     overlay.id = 'blsqui-iframe-overlay';
     overlay.style.cssText = `
@@ -148,6 +131,7 @@ export class BlsquiSDK {
       padding: 16px;
     `;
 
+    // モーダルフレームの生成
     const frameContainer = document.createElement('div');
     frameContainer.style.cssText = `
       position: relative; width: 100%; max-width: 440px; height: 680px; max-height: 90vh;
@@ -155,6 +139,7 @@ export class BlsquiSDK {
       border-radius: 16px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.7);
     `;
 
+    // 閉じるボタンの生成
     const closeBtn = document.createElement('button');
     closeBtn.innerText = '✕';
     closeBtn.setAttribute('aria-label', 'Close checkout');
@@ -169,11 +154,14 @@ export class BlsquiSDK {
       this.closeIframe();
     };
 
+    // iframeの生成
     const iframe = document.createElement('iframe');
     iframe.src = url;
     iframe.style.cssText = 'width: 100%; height: 100%; border: none;';
+    // クロスオリジン環境におけるWebAuthn（パスキー）権限ポリシーとクリップボード操作許可ポリシーを設定
     iframe.allow = 'publickey-credentials-get *; publickey-credentials-create *; clipboard-write *';
 
+    // DOMツリーへ配置
     frameContainer.appendChild(closeBtn);
     frameContainer.appendChild(iframe);
     overlay.appendChild(frameContainer);
@@ -182,13 +170,162 @@ export class BlsquiSDK {
     this.activeIframeOverlay = overlay;
   }
 
-  private static showConfirmationModal({
-    amount,
+  /**
+   * 署名画面（ゲートウェイ）をポップアップ（中央配置）/ 別タブのウィンドウで開きます。
+   * Safari / iOSにおけるパスキー（WebAuthn）認証の制限を回避するための推奨設定です。
+   */
+  private static openGatewayTab(url: string): void {
+    const width = 460;
+    const height = 740;
+    const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
+    const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
+
+    this.activePopupWindow = window.open(
+      url,
+      'BlsquiWallet',
+      `width=${width},height=${height},left=${left},top=${top},menubar=no,status=no,resizable=yes`
+    );
+  }
+
+  /**
+   * NonceをもとにバックエンドAPIを定期監視し、トランザクションの確定状態を取得します。
+   */
+  private static async pollTransactionStatus(
+    isTestnet: boolean,
+    nonce: string,
+    verbose: boolean
+  ): Promise<TransactionResult> {
+    const pollBase = isTestnet ? this.TESTNET_POLL_API : this.MAINNET_POLL_API;
+    const pollUrl = `${pollBase}?nonce=${encodeURIComponent(nonce)}`;
+    const startTime = Date.now();
+    const timeoutMs = this.TIMEOUT_SECONDS * 1000;
+
+    this.activeAbortController = new AbortController();
+
+    while (Date.now() - startTime < timeoutMs) {
+      try {
+        // バックエンドのステータス確認ポーリング
+        //   signal : ユーザーによるキャンセル操作時にネットワーク通信切断
+        //   headers: JSONレスポンス形式
+        const res = await fetch(pollUrl, {
+          signal: this.activeAbortController.signal,
+          headers: { Accept: 'application/json' }
+        });
+
+        if (res.status === 200) {
+          const data = await res.json();
+          const status = String(data.status || 'PENDING').toUpperCase() as BlsquiStatus;
+
+          if (verbose) {
+            console.log(`[BlsquiSDK Poll] Status: '${status}'`, data);
+          }
+
+          // ステータスの判定
+          if (status === 'SEALED') {
+            // トランザクション失敗時
+            if (data.errorMessage) {
+              return {
+                status: 'FAILED',
+                txId: data.txId || '',                // Flowブロックチェーン上のトランザクションID
+                nonce,                                // トランザクション識別番号
+                payer: data.payer || '',              // 署名実行者のアカウントアドレス
+                error: 'On-chain execution failed',
+                errorMessage: data.errorMessage       // ブロックチェーンノードから返されたエラー詳細
+              };
+            }
+            // トランザクション成功時
+            return {
+              status,
+              txId: data.txId || '',                   // Flowブロックチェーン上のトランザクションID
+              nonce,                                   // トランザクション識別番号
+              errorMessage: null,
+              payer: data.payer || '',                 // 署名実行者のアカウントアドレス
+              to: data.to || '',                       // イベント (TokensDeposited) から抽出された受取先アドレス。(toという引数があり、かつ振込先アドレスを指定していると格納されます)
+              amount: String(data.amount || '0.0'),    // イベント (TokensDeposited/TokensWithdrawn) から抽出された実際の`$FLOW`決済額 (Cadence UFix64)
+              token: data.token || ''                  // 決済に使用されたトークン識別子 (例: FlowToken、PYUSD)
+            };
+          } else if (status === 'EXPIRED') {
+            return {
+              status: 'EXPIRED',
+              nonce,
+              error: 'Transaction expired on-chain'
+            };
+          }
+        }
+      } catch (err: any) {
+        if (err.name === 'AbortError') {
+          return { status: 'CANCELED', nonce, error: 'Polling canceled by user.' };
+        }
+        return { status: 'FAILED', nonce, error: err?.message || 'Network request failed' };
+      }
+      // 次回ポーリングまでの待機インターバル
+      await new Promise((r) => setTimeout(r, this.POLL_INTERVAL_MS));
+    }
+
+    return {
+      status: 'TIMEOUT',
+      nonce,
+      error: `Transaction poll timed out after ${this.TIMEOUT_SECONDS} seconds.`
+    };
+  }
+
+  /**
+   * トランザクション一意識別用の256ビット暗号学的Nonce（64文字の16進数文字列）を生成します。
+   */
+  static async generateClientNonce(): Promise<string> {
+    const randomBytes = new Uint8Array(32);
+    crypto.getRandomValues(randomBytes);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', randomBytes);
+    return Array.from(new Uint8Array(hashBuffer))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+
+  /**
+   * 現在開いているすべてのモーダル、iframe、ポップアップウィンドウを閉じます。
+   */
+  static closeModal(): void {
+    if (this.activeModal) {
+      this.activeModal.remove();
+      this.activeModal = null;
+    }
+    this.closeIframe();
+    if (this.activePopupWindow && !this.activePopupWindow.closed) {
+      this.activePopupWindow.close();
+      this.activePopupWindow = null;
+    }
+  }
+
+  /**
+   * マウント中のiframeオーバーレイを削除する。
+   */
+  private static closeIframe(): void {
+    if (this.activeIframeOverlay) {
+      this.activeIframeOverlay.remove();
+      this.activeIframeOverlay = null;
+    }
+  }
+
+  /**
+   * 実行中のトランザクションポーリングを中断し、モーダルを閉じる。
+   */
+  static cancelTransaction(): void {
+    if (this.activeAbortController) {
+      this.activeAbortController.abort(); // Sends the kill signal to pollTransactionStatus method.
+      this.activeAbortController = null;
+    }
+    this.closeModal();
+  }
+
+
+  /**
+   * 組み込みの確認モーダルダイアログを描画・表示する。
+   */
+  private static showDefaultConfirmationModal({
     modalContent,
     onCancel,
     onConfirm
   }: {
-    amount: string;
     modalContent?: TransactionOptions['modalContent'];
     onCancel: () => void;
     onConfirm: (setLoading: (loading: boolean) => void) => void;
@@ -199,7 +336,7 @@ export class BlsquiSDK {
     const icon = content.icon ?? '🏆';
     const title = content.title ?? 'Tournament Entry';
     const lead = content.leadText ?? 'Would you like to enter the Tournament?';
-    const sub = content.subText ?? `Entry requires payment of an entry fee (${amount} FLOW).`;
+    const sub = content.subText ?? `Entry requires payment of an entry fee (10 FLOW).`;
     const cancelText = content.cancelLabel ?? 'Cancel';
     const confirmText = content.confirmLabel ?? 'OK';
 
@@ -209,7 +346,7 @@ export class BlsquiSDK {
       position: fixed; inset: 0; z-index: 99999;
       display: flex; align-items: center; justify-content: center;
       background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(4px);
-      padding: 16px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 16px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", Meiryo, sans-serif;
     `;
 
     const card = document.createElement('div');
@@ -240,7 +377,7 @@ export class BlsquiSDK {
       </div>
       <div style="margin-bottom: 24px;">
         <p style="margin: 0 0 6px 0; font-size: 14px; font-weight: 600; color: #e2e8f0;">${lead}</p>
-        <p style="margin: 0; font-size: 12px; color: #94a3b8; line-height: 1.4;">${sub}</p>
+        <p style="margin: 0; font-size: 12px; color: #94a3b8; line-height: 1.5;">${sub}</p>
       </div>
       <div style="display: flex; justify-content: flex-end; gap: 12px;">
         <button id="blsqui-btn-cancel" type="button" style="
@@ -270,110 +407,12 @@ export class BlsquiSDK {
       onConfirm((loading) => {
         if (loading) {
           confirmBtn.disabled = true;
-          confirmBtn.innerText = 'Connecting...';
+          confirmBtn.innerText = '接続中...';
           confirmBtn.style.opacity = '0.6';
           cancelBtn.style.display = 'none';
         }
       });
     };
-  }
-
-  private static async pollTransactionStatus(
-    isTestnet: boolean,
-    nonce: string,
-    verbose: boolean
-  ): Promise<TransactionResult> {
-    const pollBase = isTestnet ? this.TESTNET_POLL_API : this.MAINNET_POLL_API;
-    const pollUrl = `${pollBase}?nonce=${encodeURIComponent(nonce)}`;
-    const startTime = Date.now();
-    const timeoutMs = this.TIMEOUT_SECONDS * 1000;
-
-    this.activeAbortController = new AbortController();
-
-    while (Date.now() - startTime < timeoutMs) {
-      try {
-        const res = await fetch(pollUrl, {
-          signal: this.activeAbortController.signal,
-          headers: { Accept: 'application/json' }
-        });
-
-        if (res.status === 200) {
-          const data = await res.json();
-          const status = String(data.status || 'PENDING').toUpperCase() as BlsquiStatus;
-
-          if (verbose) {
-            console.log(`[BlsquiSDK Poll] Status: '${status}'`, data);
-          }
-
-          if (['SEALED', 'EXECUTED', 'FINALIZED', 'SUCCESS'].includes(status)) {
-            return {
-              status,
-              txId: data.txId || '',
-              nonce,
-              errorMessage: data.errorMessage || null,
-              payer: data.payer || '',
-              to: data.to || '',
-              amount: String(data.amount || '0.0'),
-              token: data.token || 'FLOW'
-            };
-          } else if (status === 'EXPIRED') {
-            return {
-              status: 'EXPIRED',
-              nonce,
-              error: 'Transaction expired on-chain'
-            };
-          }
-        }
-      } catch (err: any) {
-        if (err.name === 'AbortError') {
-          return { status: 'FAILED', nonce, error: 'Polling canceled by user.' };
-        }
-      }
-
-      await new Promise((r) => setTimeout(r, this.POLL_INTERVAL_MS));
-    }
-
-    return {
-      status: 'TIMEOUT',
-      nonce,
-      error: `Transaction poll timed out after ${this.TIMEOUT_SECONDS} seconds.`
-    };
-  }
-
-  static async generateClientNonce(): Promise<string> {
-    const randomBytes = new Uint8Array(32);
-    crypto.getRandomValues(randomBytes);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', randomBytes);
-    return Array.from(new Uint8Array(hashBuffer))
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('');
-  }
-
-  static closeModal(): void {
-    if (this.activeModal) {
-      this.activeModal.remove();
-      this.activeModal = null;
-    }
-    this.closeIframe();
-    if (this.activePopupWindow && !this.activePopupWindow.closed) {
-      this.activePopupWindow.close();
-      this.activePopupWindow = null;
-    }
-  }
-
-  private static closeIframe(): void {
-    if (this.activeIframeOverlay) {
-      this.activeIframeOverlay.remove();
-      this.activeIframeOverlay = null;
-    }
-  }
-
-  static cancelTransaction(): void {
-    if (this.activeAbortController) {
-      this.activeAbortController.abort();
-      this.activeAbortController = null;
-    }
-    this.closeModal();
   }
 }
 

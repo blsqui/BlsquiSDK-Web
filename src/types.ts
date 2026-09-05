@@ -1,86 +1,84 @@
+// トランザクションの処理ステータス
 export type BlsquiStatus =
+  // --- Flowブロックチェーン上の確定状態 ---
   | 'PENDING'
-  | 'SEALED'
+  | 'FINALIZED'  // コンセンサスノードによる承認完了・実行待ち
   | 'EXECUTED'
-  | 'FINALIZED'
-  | 'SUCCESS'
+  | 'SEALED'
   | 'EXPIRED'
-  | 'TIMEOUT'
-  | 'FAILED'
-  | 'CANCELED';
+  | 'FAILED'     // トランザクション失敗
+  // --- SDKクライアント側のライフサイクル状態 ---
+  | 'TIMEOUT'    // ポーリング規定時間（デフォルト300秒）の超過
+  | 'CANCELED';  // ユーザーによる手動キャンセル
 
+// 署名画面の表示モード
 export type BlsquiDisplayMode = 'iframe' | 'tab';
 
-export interface ModalContentConfig {
-  /** Emoji or icon shown in dialog header (default: "🏆") */
-  icon?: string;
-  /** Modal title (default: "Tournament Entry") */
-  title?: string;
-  /** Main lead text */
-  leadText?: string;
-  /** Subtitle / requirement details */
-  subText?: string;
-  /** OK button label (default: "OK") */
-  confirmLabel?: string;
-  /** Cancel button label (default: "Cancel") */
-  cancelLabel?: string;
-}
-
+// トランザクション要求時の設定オプション
 export interface TransactionOptions {
-  /**
-   * Flow Testnet (true) or Mainnet (false).
-   * Default: true
-   */
+  // 接続先ネットワーク環境の指定
   isTestnet?: boolean;
 
-  /**
-   * Whether to use the built-in Tournament Entry confirmation modal.
-   * Default: true
-   */
+  // 組み込みの確認モーダルを表示するかどうか
   useDefaultModal?: boolean;
 
-  /**
-   * Signer display presentation:
-   * - 'tab': Opens dedicated popup window (Safari/WebAuthn safe)
-   * - 'iframe': Mounts in-page overlay
-   * Default: 'tab'
-   */
+  // ゲートウェイの展開方式
+  // - 'tab': ポップアップウィンドウ（iOS Safari / Android 等の生体認証に最適）
+  // - 'iframe': ページ内オーバーレイ (デスクトップ環境向け)
   displayMode?: BlsquiDisplayMode;
 
-  /**
-   * FLIX template ID.
-   * Defaults to tournament entry FLIX when useDefaultModal is true.
-   */
+  // 実行対象のFLIX（Flow Interaction Template）ID
+  // 未指定かつ useDefaultModal が true の場合は、デフォルトのFLIX ID(10 FLOW entry fee)が適用されます。
   flixId?: string;
 
-  /**
-   * Arguments passed to the FLIX transaction.
-   * For the default modal, `to` and `price` will be automatically populated if omitted.
-   * Example: { to: '0xa090...', price: '10.0', itemId: 'nitro' }
-   */
+  // FLIXテンプレートに渡す実行引数（Key-Value形式）
+  // @example { to: '0xa090...', itemId: 'item_01' }
   args?: Record<string, string | number>;
 
-  /** Optional convenience shortcut for recipient (merged into args.to) */
-  destination?: string;
-
-  /** Optional convenience shortcut for payment amount (merged into args.price) */
-  amount?: number | string;
-
-  /** Text & icon customization for the default dialog */
+  // 確認モーダルのテキスト・アイコンのカスタマイズ設定
   modalContent?: ModalContentConfig;
 
-  /** Print verbose console logs. Default: false */
+  // コンソールログの詳細出力を有効化するかどうか
   verbose?: boolean;
 }
 
+/**
+ * トランザクション実行結果
+ */
 export interface TransactionResult {
+  /** 最終実行ステータス（SEALED, EXECUTED 等） */
   status: BlsquiStatus;
+  /** Flowブロックチェーン上のトランザクションID（オンチェーン証明） */
   txId?: string;
+  /** トランザクション識別番号 (Nonce) */
   nonce: string;
-  errorMessage?: string | null;
-  error?: string;
+  /** パスキー署名を実行したアカウントアドレス */
   payer?: string;
+  /** オンチェーンイベント（TokensDeposited）から抽出された実際の受取先アドレス */
   to?: string;
+  /** オンチェーンイベントから抽出された確定送金額（Cadence UFix64） */
   amount?: string;
+  /** 決済に使用されたトークン識別子（例: FlowToken, PYUSD） */
   token?: string;
+  /** SDK側で検知されたエラー内容（キャンセル・タイムアウト等） */
+  error?: string;
+  /** ブロックチェーンノードから返却されたエラー詳細メッセージ */
+  errorMessage?: string | null;
+}
+
+
+// 組み込み確認モーダルの文言およびアイコンのカスタマイズ設定
+export interface ModalContentConfig {
+  /** ダイアログヘッダーに表示する絵文字またはアイコン文字列（デフォルト: "🏆"） */
+  icon?: string;
+  /** モーダルのタイトル文言（デフォルト: "大会エントリー確認"） */
+  title?: string;
+  /** 主要な説明・リードテキスト（デフォルト: "大会にエントリーしますか？"） */
+  leadText?: string;
+  /** 補足説明文（デフォルト: "参加費用（10 FLOW）の送金承認が必要です。"） */
+  subText?: string;
+  /** 確定・承認ボタンのラベル（デフォルト: "参加する"） */
+  confirmLabel?: string;
+  /** キャンセルボタンのラベル（デフォルト: "キャンセル"） */
+  cancelLabel?: string;
 }
