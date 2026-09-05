@@ -82,13 +82,14 @@ if (result.status === 'SEALED') {
 Cross-origin Passkeys (WebAuthn) have varying security and storage restrictions across browsers (specifically Safari / iOS WebKit). @blsqui/sdk-web gives you full control over how the signing screen is presented:
 
 ```ts
+// ユーザーのリアクション（ボタンのクリックイベント）からSDK呼び出しまでの間に非同期処理を挟むとポップアップブロッカーが働く可能性がありますので、非同期処理はユーザーのアクション前に実施をお願いします。
 const result = await BlsquiSDK.requestTransaction({
-  // Option 1: 'tab'
+  // Option 1: 'tab' (Default)
   // Opens a centered popup window. Guarantees 100% native Passkey / Face ID / Touch ID
   // compatibility across Safari, iOS, Chrome, and Android.
   displayMode: 'tab', // IFrameではなくポップアップ(デスクトップ環境)/ 別タブ(モバイル環境)で表示します。
 
-  // Option 2: 'iframe' (Default)
+  // Option 2: 'iframe'
   // Directly embeds an iframe modal overlay into your game viewport.
   // Ideal for desktop Chromium browsers.
   // displayMode: 'iframe',
