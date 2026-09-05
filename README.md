@@ -36,7 +36,7 @@ yarn add @blsqui/sdk-web
 
 By default, @blsqui/sdk-web includes a ready-to-use tournament entry confirmation dialog presets for Testnet (10 FLOW entry):
 
-```bash
+```ts
 import { BlsquiSDK } from '@blsqui/sdk-web';
 
 async function handleEnterTournament() {
@@ -62,7 +62,7 @@ async function handleEnterTournament() {
 
 If your game already provides its own UI (e.g. inventory screen, garage shop, or custom canvas HUD), set `useDefaultModal: false` to bypass the built-in modal and trigger transactions directly:
 
-```bash
+```ts
 import { BlsquiSDK } from '@blsqui/sdk-web';
 
 async function purchaseNitroUpgrade() {
@@ -86,7 +86,7 @@ async function purchaseNitroUpgrade() {
 
 Cross-origin Passkeys (WebAuthn) have varying security and storage restrictions across browsers (specifically Safari / iOS WebKit). @blsqui/sdk-web gives you full control over how the signing screen is presented:
 
-```bash
+```ts
 const result = await BlsquiSDK.requestTransaction({
   // Option 1: 'tab' (Default)
   // Opens a centered popup window. Guarantees 100% native Passkey / Face ID / Touch ID
@@ -104,7 +104,7 @@ const result = await BlsquiSDK.requestTransaction({
 
 You can customize the emoji icon, header title, description text, and button labels of the built-in confirmation dialog via `modalContent`. This is ideal for internationalization (i18n) or non-tournament purchases (e.g. skin shops, battle passes, or energy refills):
 
-```bash
+```ts
 import { BlsquiSDK } from '@blsqui/sdk-web';
 
 async function handleBuySeasonPass() {
