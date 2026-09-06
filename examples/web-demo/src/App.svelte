@@ -38,7 +38,7 @@
         useDefaultModal: true,                                                      // 組み込みの確認モーダルUIを使用
         isTestnet: true,                                                            // Flow Testnet を指定
         verbose: true,                                                              // 開発用コンソールログを有効化
-        flixId: '6aae990ef2619581c28acbc4ac09594d4e9c3e0829bd5533eed88214ea6b3c3d', // 実行対象の FLIX ID
+        flixId: '7d9d4b154547d7f6ec95e8b95741ed84663592d8c0016dbc4b28b6f9bf435ba5', // 実行対象の FLIX ID
         args: {                                                                     // FLIX 実行に必要な引数
           to: '0xa090f900023d6d34'
         }
@@ -269,6 +269,9 @@
     max-width: 620px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
     animation: fadeInSlide 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    pointer-events: auto;
+    user-select: text;
+    -webkit-user-select: text;
   }
 
   .receipt-header {
@@ -322,6 +325,9 @@
   .receipt-item .value {
     font-size: 0.78rem;
     color: #f1f5f9;
+    user-select: text;
+    -webkit-user-select: text;
+    cursor: text;
   }
 
   .receipt-item .value.highlight {
@@ -333,6 +339,7 @@
     color: #38bdf8;
     text-decoration: underline;
     word-break: break-all;
+    cursor: pointer;
   }
 
   .receipt-item .link:hover {

@@ -12,7 +12,7 @@ export class BlsquiSDK {
   public static readonly MAINNET_POLL_API: string = 'https://wallet.blsqui.net/api/status';
   public static readonly TESTNET_POLL_API: string = 'https://lab.blsqui.net/api/status';
 
-  public static readonly DEFAULT_FLIX_ID: string = '6aae990ef2619581c28acbc4ac09594d4e9c3e0829bd5533eed88214ea6b3c3d'; // Default FLIXテンプレート (10 FLOW entry fee)
+  public static readonly DEFAULT_FLIX_ID: string = '7d9d4b154547d7f6ec95e8b95741ed84663592d8c0016dbc4b28b6f9bf435ba5'; // Default FLIXテンプレート (10 FLOW entry fee)
   public static readonly POLL_INTERVAL_MS: number = 1500; // 1.5秒間隔ポーリングでステータスを確認
   public static readonly TIMEOUT_SECONDS: number = 300.0; // ポーリング最大待機時間（5分）
 
@@ -200,15 +200,10 @@ export class BlsquiSDK {
     const startTime = Date.now();
     const timeoutMs = this.TIMEOUT_SECONDS * 1000;
 
-    this.activeAbortController = new AbortController();
-
     while (Date.now() - startTime < timeoutMs) {
       try {
         // バックエンドのステータス確認ポーリング
-        //   signal : iframeをユーザーにより閉じた時にネットワーク通信を切断する
-        //   headers: JSONレスポンス形式
         const res = await fetch(pollUrl, {
-          signal: this.activeAbortController.signal,
           headers: { Accept: 'application/json' }
         });
 
@@ -310,10 +305,6 @@ export class BlsquiSDK {
    * 実行中のトランザクションポーリングを中断し、モーダルを閉じる。
    */
   static cancelTransaction(): void {
-    if (this.activeAbortController) {
-      this.activeAbortController.abort(); // Sends the kill signal to pollTransactionStatus method.
-      this.activeAbortController = null;
-    }
     this.closeModal();
   }
 
