@@ -205,7 +205,7 @@ export class BlsquiSDK {
     while (Date.now() - startTime < timeoutMs) {
       try {
         // バックエンドのステータス確認ポーリング
-        //   signal : ユーザーによるキャンセル操作時にネットワーク通信切断
+        //   signal : iframeをユーザーにより閉じた時にネットワーク通信を切断する
         //   headers: JSONレスポンス形式
         const res = await fetch(pollUrl, {
           signal: this.activeAbortController.signal,
@@ -241,7 +241,7 @@ export class BlsquiSDK {
               errorMessage: null,
               payer: data.payer || '',                 // 署名実行者のアカウントアドレス
               to: data.to || '',                       // イベント (TokensDeposited) から抽出された受取先アドレス。(toという引数があり、かつ振込先アドレスを指定していると格納されます)
-              amount: String(data.amount || '0.0'),    // イベント (TokensDeposited/TokensWithdrawn) から抽出された実際の`$FLOW`決済額 (Cadence UFix64)
+              amount: String(data.amount || '0.0'),    // イベント (TokensDeposited/TokensWithdrawn) から抽出された実際の決済額 (Cadence UFix64)
               token: data.token || ''                  // 決済に使用されたトークン識別子 (例: FlowToken、PYUSD)
             };
           } else if (status === 'EXPIRED') {

@@ -71,14 +71,14 @@ export interface TransactionResult {
 export interface ModalContentConfig {
   /** ダイアログヘッダーに表示する絵文字またはアイコン文字列（デフォルト: "🏆"） */
   icon?: string;
-  /** モーダルのタイトル文言（デフォルト: "大会エントリー確認"） */
+  /** モーダルのタイトル文言（デフォルト: "Tournament Entry"） */
   title?: string;
-  /** 主要な説明・リードテキスト（デフォルト: "大会にエントリーしますか？"） */
+  /** 主要な説明・リードテキスト（デフォルト: "Would you like to enter the Tournament?"） */
   leadText?: string;
-  /** 補足説明文（デフォルト: "参加費用（10 FLOW）の送金承認が必要です。"） */
+  /** 補足説明文（デフォルト: "Entry requires payment of an entry fee (10 FLOW)."） */
   subText?: string;
-  /** 確定・承認ボタンのラベル（デフォルト: "参加する"） */
+  /** 確定・承認ボタンのラベル（デフォルト: "OK"） */
   confirmLabel?: string;
-  /** キャンセルボタンのラベル（デフォルト: "キャンセル"） */
+  /** キャンセルボタンのラベル（デフォルト: "Cancel"） */
   cancelLabel?: string;
 }

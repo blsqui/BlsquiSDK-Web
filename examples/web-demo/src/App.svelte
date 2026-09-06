@@ -105,7 +105,7 @@
       if (autoDriveExit) {
         carXPercent -= 1.2;
         if (carXPercent < -25) {
-          // statusMessage = '🏁 Entering Tournament Arena!';
+          statusMessage = '🏁 Entering Tournament Arena!';
         }
       } else if (!isTransactionActive) {
         if (isMovingLeft) moveLeft();
