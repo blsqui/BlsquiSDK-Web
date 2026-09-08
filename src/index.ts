@@ -213,7 +213,7 @@ export class BlsquiSDK {
     // モーダルフレームの生成
     const frameContainer = document.createElement('div');
     frameContainer.style.cssText = `
-      position: relative; width: 100%; max-width: 440px; height: 680px; max-height: 90vh;
+      position: relative; width: 100%; max-width: 440px; height: 680px; max-height: 97vh;
       background-color: #0f141c; border: 1px solid rgba(99, 102, 241, 0.3);
       border-radius: 16px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.7);
     `;
@@ -223,7 +223,7 @@ export class BlsquiSDK {
     closeBtn.innerText = '✕';
     closeBtn.setAttribute('aria-label', 'Close checkout');
     closeBtn.style.cssText = `
-      position: absolute; top: 12px; right: 12px; z-index: 10;
+      position: absolute; top: 15px; right: 15px; z-index: 10;
       width: 28px; height: 28px; border-radius: 9999px;
       border: 1px solid rgba(255, 255, 255, 0.2); background: rgba(0, 0, 0, 0.5);
       color: #cbd5e1; font-size: 13px; font-weight: bold; cursor: pointer;
