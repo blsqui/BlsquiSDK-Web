@@ -19,8 +19,10 @@ export class BlsquiSDK {
   // --- 状態管理（モーダル・通信 制御） ---
   private static activeModal: HTMLElement | null = null;
   private static activeIframeOverlay: HTMLElement | null = null;
-  private static activeAbortController: AbortController | null = null;
-  private static activePopupWindow: Window | null = null;
+  private static isCanceled: boolean = false;
+  private static activePopupWindow: Window | null = null; // window.closeを検知する
+  private static popupCheckTimer: number | null = null;
+  private static iframeMessageHandler: ((event: MessageEvent) => void) | null = null;
 
   /**
    * トランザクション要求を発行します。
@@ -31,7 +33,9 @@ export class BlsquiSDK {
   static async requestTransaction(options: TransactionOptions = {}): Promise<TransactionResult> {
     const isTestnet = options.isTestnet ?? true;                                     // テストネットかメインネットか
     const useDefaultModal = options.useDefaultModal ?? true;                         // デフォルトのモーダルを使用するかどうか
-    const displayMode: BlsquiDisplayMode = options.displayMode ?? 'tab';             // IFrame or Tab
+    const { isMobile, isIOS, isLocalhost } = this.getDeviceInfo();
+    const displayMode: BlsquiDisplayMode = options.displayMode ?? (isMobile || isIOS || isLocalhost ? 'tab' : 'iframe'); // IFrame or Tab
+
     const verbose = options.verbose ?? false;                                        // Verboseフラグ
 
     const baseUrl = isTestnet ? this.TESTNET_GATEWAY_URL : this.MAINNET_GATEWAY_URL; // エンドポイント確定
@@ -63,29 +67,46 @@ export class BlsquiSDK {
 
     if (!useDefaultModal) {
       // パターンA: 独自UIを使用（即時起動）
-      this.launchGateway(fullUrl, displayMode);
+      this.isCanceled = false;
+      this.launchGateway(fullUrl, displayMode, () => {
+        this.cancelTransaction();
+      });
       return this.pollTransactionStatus(isTestnet, currentNonce, verbose);
     } else {
       // パターンB: 組み込みモーダルを表示
       return new Promise<TransactionResult>((resolve) => {
+        this.isCanceled = false;
+
         this.showDefaultConfirmationModal({
           modalContent: options.modalContent,
           onCancel: () => {
-            this.closeModal();
+            this.cancelTransaction();
             resolve({
-                status: 'CANCELED',
-                nonce: currentNonce,
-                error: 'User canceled transaction'
+              status: 'CANCELED',
+              nonce: currentNonce,
+              error: 'User canceled transaction'
             });
-           },
+          },
           onConfirm: async (setLoading) => {
             setLoading(true);
 
             if (verbose) {
-                console.log(`[BlsquiSDK] Launching signer via [${displayMode}]: ${fullUrl}`);
+              console.log(`[BlsquiSDK] Launching signer via [${displayMode}]: ${fullUrl}`);
             }
 
-            this.launchGateway(fullUrl, displayMode);
+            if (displayMode === 'iframe') {
+              this.openGatewayIframe(fullUrl);
+            } else {
+              // タブ起動：ユーザーがタブを閉じた時にキャンセルを発火
+              this.openGatewayTab(fullUrl, () => {
+                this.cancelTransaction();
+                resolve({
+                  status: 'CANCELED',
+                  nonce: currentNonce,
+                  error: 'Signer window was closed by user.'
+                });
+              });
+            }
 
             // オンチェーン確定までステータスを監視
             const result = await this.pollTransactionStatus(isTestnet, currentNonce, verbose);
@@ -100,12 +121,62 @@ export class BlsquiSDK {
   /**
    * 指定された表示モード（別タブ または iframe）で署名画面を展開します。
    */
-  private static launchGateway(url: string, mode: BlsquiDisplayMode): void {
+  private static launchGateway(url: string, mode: BlsquiDisplayMode, onClose?: () => void): void {
     if (mode === 'iframe') {
       this.openGatewayIframe(url);
     } else {
-      this.openGatewayTab(url);
+      this.openGatewayTab(url, onClose);
     }
+  }
+
+  /**
+   * 実行環境のデバイスおよびOS特性を判定します。
+   * iPadOS（MacIntel偽装）と実機Macの判別、およびiOS/Androidモバイルの検出を行います。
+   */
+  public static getDeviceInfo(): {
+    isMobile: boolean;
+    isIOS: boolean;
+    isMac: boolean;
+    isLocalhost: boolean;
+  } {
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+      return { isMobile: false, isIOS: false, isMac: false, isLocalhost: false };
+    }
+
+    const ua = navigator.userAgent || '';
+    const maxTouchPoints = navigator.maxTouchPoints || 0;
+    const hostname = window.location.hostname || '';
+
+    // localhost / local loopback / 開発IPアドレスを検出する
+    const isLocalhost = Boolean(
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '[::1]' ||
+      hostname.endsWith('.local') ||
+      /^192\.168\.\d{1,3}\.\d{1,3}$/.test(hostname) ||
+      /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)
+    );
+
+    // iPhone / iPod の直接判定
+    const isDirectIOS = /iPhone|iPod/.test(ua);
+
+    // iPad と Mac の判別
+    // iPadOS は Safari のデスクトップ表示モードで UA が "Macintosh" / "MacIntel" に偽装されるが、
+    // マルチタッチ対応スクリーン（maxTouchPoints >= 1）を持つ。
+    // 実機の Mac はタッチパネル非対応のため maxTouchPoints は 0。
+    const isIPad = /Macintosh/.test(ua) && maxTouchPoints > 1;
+
+    // iOS（iPhone/iPad）の確定判定
+    const isIOS = isDirectIOS || isIPad;
+
+    // Mac判定: UA が "Macintoshを持ち, タッチパネル非対応のため maxTouchPoints は 0
+    const isMac = !isIOS && /Macintosh/.test(ua);
+
+    // モバイル全体の判定（iOS + Android + 各種モバイルUA）
+    const isAndroid = /Android/i.test(ua);
+    const isMobile = isIOS || isAndroid || /Mobi|Tablet/i.test(ua);
+
+    return { isMobile, isIOS, isMac, isLocalhost };
   }
 
   /**
@@ -121,6 +192,14 @@ export class BlsquiSDK {
   private static openGatewayIframe(url: string): void {
     this.closeIframe();
 
+    // iframe内からのキャンセル通知を待ち受ける
+    this.iframeMessageHandler = (event: MessageEvent) => {
+      if (event.data?.type === 'BLSQUI_CANCEL') {
+        this.cancelTransaction();
+      }
+    };
+
+    window.addEventListener('message', this.iframeMessageHandler);
     // 背景オーバーレイ（背景の暗転・blur処理）の生成
     const overlay = document.createElement('div');
     overlay.id = 'blsqui-iframe-overlay';
@@ -151,7 +230,6 @@ export class BlsquiSDK {
     `;
     closeBtn.onclick = () => {
       this.cancelTransaction();
-      this.closeIframe();
     };
 
     // iframeの生成
@@ -174,7 +252,7 @@ export class BlsquiSDK {
    * 署名画面（ゲートウェイ）をポップアップ（中央配置）/ 別タブのウィンドウで開きます。
    * Safari / iOSにおけるパスキー（WebAuthn）認証の制限を回避するための推奨設定です。
    */
-  private static openGatewayTab(url: string): void {
+  private static openGatewayTab(url: string, onTabClosed?: () => void): void {
     const width = 460;
     const height = 740;
     const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
@@ -185,6 +263,26 @@ export class BlsquiSDK {
       'BlsquiWallet',
       `width=${width},height=${height},left=${left},top=${top},menubar=no,status=no,resizable=yes`
     );
+
+    // ポップアップタブがユーザーによって閉じられたかを監視
+    if (this.popupCheckTimer) {
+      window.clearInterval(this.popupCheckTimer);
+    }
+
+    if (this.activePopupWindow) {
+      this.popupCheckTimer = window.setInterval(() => {
+        if (this.activePopupWindow && this.activePopupWindow.closed) {
+          if (this.popupCheckTimer) {
+            window.clearInterval(this.popupCheckTimer);
+            this.popupCheckTimer = null;
+          }
+          this.activePopupWindow = null;
+          if (onTabClosed) {
+            onTabClosed();
+          }
+        }
+      }, 800);
+    }
   }
 
   /**
@@ -201,6 +299,10 @@ export class BlsquiSDK {
     const timeoutMs = this.TIMEOUT_SECONDS * 1000;
 
     while (Date.now() - startTime < timeoutMs) {
+      if (this.isCanceled) {
+        return { status: 'CANCELED', nonce, error: 'Transaction canceled by user.' };
+      }
+
       try {
         // バックエンドのステータス確認ポーリング
         const res = await fetch(pollUrl, {
@@ -305,6 +407,7 @@ export class BlsquiSDK {
    * 実行中のトランザクションポーリングを中断し、モーダルを閉じる。
    */
   static cancelTransaction(): void {
+    this.isCanceled = true;
     this.closeModal();
   }
 
@@ -330,6 +433,8 @@ export class BlsquiSDK {
     const sub = content.subText ?? `Entry requires payment of an entry fee (10 FLOW).`;
     const cancelText = content.cancelLabel ?? 'Cancel';
     const confirmText = content.confirmLabel ?? 'OK';
+    const pendingConfirmText = content.pendingConfirmLabel ?? 'Connecting...';
+    const pendingCancelText = content.pendingCancelLabel ?? 'Cancel';
 
     const overlay = document.createElement('div');
     overlay.id = 'blsqui-dialog-overlay';
@@ -398,9 +503,16 @@ export class BlsquiSDK {
       onConfirm((loading) => {
         if (loading) {
           confirmBtn.disabled = true;
-          confirmBtn.innerText = '接続中...';
-          confirmBtn.style.opacity = '0.6';
-          cancelBtn.style.display = 'none';
+          confirmBtn.innerText = pendingConfirmText;
+          confirmBtn.style.opacity = '0.5';
+          confirmBtn.style.cursor = 'not-allowed';
+
+          cancelBtn.innerText = pendingCancelText;
+          cancelBtn.style.color = '#ef4444';
+          cancelBtn.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+          cancelBtn.onclick = () => {
+            this.cancelTransaction();
+          };
         }
       });
     };

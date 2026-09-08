@@ -81,4 +81,8 @@ export interface ModalContentConfig {
   confirmLabel?: string;
   /** キャンセルボタンのラベル（デフォルト: "Cancel"） */
   cancelLabel?: string;
+  /** 署名待ち受け中の確定ボタンラベル（デフォルト: "Connecting..."） */
+  pendingConfirmLabel?: string;
+  /** 署名待ち受け中のキャンセルボタンラベル（デフォルト: "Cancel"） */
+  pendingCancelLabel?: string;
 }
