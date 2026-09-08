@@ -153,6 +153,8 @@ if (result.status === 'SEALED') {
 | `subText` | `string` | `'Requires 10 FLOW entry fee.'` | Detailed explanation or transaction summary. |
 | `confirmLabel` | `string` | `'OK'` | Label for the positive confirmation button. |
 | `cancelLabel` | `string` | `'Cancel'` | Label for the dismiss/cancel button. |
+| `pendingConfirmLabel` | `string` | `'Connecting...'` | Label shown on the disabled confirm button while waiting for transaction signing. |
+| `pendingCancelLabel` | `string` | `'Cancel'` | Label shown on the cancel/abort button while the transaction is in progress. |
 
 #### `TransactionResult`
 ```bash
