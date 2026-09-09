@@ -206,8 +206,7 @@ export class BlsquiSDK {
     overlay.style.cssText = `
       position: fixed; inset: 0; z-index: 999999;
       display: flex; align-items: center; justify-content: center;
-      background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(8px);
-      padding: 16px;
+      background: transparent;
     `;
 
     // モーダルフレームの生成
