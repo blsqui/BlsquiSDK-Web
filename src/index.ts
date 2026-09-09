@@ -227,6 +227,8 @@ export class BlsquiSDK {
       width: 28px; height: 28px; border-radius: 9999px;
       border: 1px solid rgba(255, 255, 255, 0.2); background: rgba(0, 0, 0, 0.5);
       color: #cbd5e1; font-size: 13px; font-weight: bold; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      padding: 0; line-height: 1;
     `;
     closeBtn.onclick = () => {
       this.cancelTransaction();
@@ -253,8 +255,8 @@ export class BlsquiSDK {
    * Safari / iOSにおけるパスキー（WebAuthn）認証の制限を回避するための推奨設定です。
    */
   private static openGatewayTab(url: string, onTabClosed?: () => void): void {
-    const width = 460;
-    const height = 740;
+    const width = 430;
+    const height = 650;
     const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
     const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
 
