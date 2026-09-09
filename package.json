@@ -1,6 +1,6 @@
 {
   "name": "@blsqui/sdk-web",
-  "version": "0.9.6",
+  "version": "0.9.7",
   "homepage": "https://blsqui.net",
   "type": "module",
   "description": "Official Web SDK for Blsqui — Flow blockchain Local loopback Auth integration & in-game transaction dialogs.",
