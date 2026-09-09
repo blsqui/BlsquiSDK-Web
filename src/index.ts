@@ -213,7 +213,7 @@ export class BlsquiSDK {
     // モーダルフレームの生成
     const frameContainer = document.createElement('div');
     frameContainer.style.cssText = `
-      position: relative; width: 100%; max-width: 430px; height: 680px; max-height: 97vh;
+      position: relative; width: 100%; max-width: 430px; height: 665px; max-height: 97vh;
       background-color: #0f141c; border: 1px solid rgba(99, 102, 241, 0.3);
       border-radius: 16px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.7);
     `;
