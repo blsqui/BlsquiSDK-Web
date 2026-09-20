@@ -45,20 +45,43 @@ export class BlsquiSDK {
     const currentNonce = await this.generateClientNonce(); // トランザクション識別番号
     const currentTime = Math.floor(Date.now() / 1000);     // 発行日時のタイムスタンプ
 
-    // URLクエリパラメータの構築
-    const params = new URLSearchParams({
-      flix: flixId,
-      issued_time: String(currentTime),
-      nonce: currentNonce
-    });
+    // APIエンドポイント（オリジン）を決定
+    const apiOrigin = new URL(baseUrl).origin;
 
-    // 任意の追加引数をクエリパラメータへ
-    for (const [key, val] of Object.entries(mergedArgs)) {
-      if (val !== undefined && val !== null && String(val).trim() !== '') {
-        params.set(key, String(val));
+    // Cloudflare Function (/api/session/sign) を呼び出して非対称署名付きJWTを発行
+    let token: string;
+    try {
+      const response = await fetch(`${apiOrigin}/api/session/sign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          flix: flixId,
+          issued_time: currentTime,
+          nonce: currentNonce,
+          ...mergedArgs
+        })
+      });
+
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => ({}));
+        throw new Error(errJson.error || `HTTP_${response.status}`);
       }
+
+      const resData = await response.json();
+      token = resData.token;
+    } catch (err: any) {
+      if (verbose) {
+        console.error('[BlsquiSDK] Failed to acquire signed session token:', err);
+      }
+      return {
+        status: 'FAILED',
+        nonce: currentNonce,
+        error: `Failed to sign transaction session: ${err.message}`
+      };
     }
-    const fullUrl = `${baseUrl}?${params.toString()}`;
+
+    // クエリパラメータには改ざん防止済みの token のみを設定
+    const fullUrl = `${baseUrl}?request=${encodeURIComponent(token)}`;
 
     if (verbose) {
       console.log(`[BlsquiSDK] Mode: ${useDefaultModal ? 'DefaultModal' : 'CustomModal'} [${displayMode}]`);
@@ -340,7 +363,8 @@ export class BlsquiSDK {
               payer: data.payer || '',                 // 署名実行者のアカウントアドレス
               to: data.to || '',                       // イベント (TokensDeposited) から抽出された受取先アドレス。(toという引数があり、かつ振込先アドレスを指定していると格納されます)
               amount: String(data.amount || '0.0'),    // イベント (TokensDeposited/TokensWithdrawn) から抽出された実際の決済額 (Cadence UFix64)
-              token: data.token || ''                  // 決済に使用されたトークン識別子 (例: FlowToken、PYUSD)
+              token: data.token || '',                 // 決済に使用されたトークン識別子 (例: FlowToken、PYUSD)
+              txFee: data.txFee || data.tx_fee || null // txFee を呼び出し元へ返却
             };
           } else if (status === 'EXPIRED') {
             return {

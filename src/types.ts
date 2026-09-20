@@ -60,6 +60,8 @@ export interface TransactionResult {
   amount?: string;
   /** 決済に使用されたトークン識別子（例: FlowToken, PYUSD） */
   token?: string;
+  /** トランザクション手数料 */
+  txFee?: string | null;
   /** SDK側で検知されたエラー内容（キャンセル・タイムアウト等） */
   error?: string;
   /** ブロックチェーンノードから返却されたエラー詳細メッセージ */

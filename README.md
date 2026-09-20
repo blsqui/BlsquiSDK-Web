@@ -135,11 +135,11 @@ if (result.status === 'SEALED') {
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
-| `isTestnet` | `boolean` | `true` | When `true`, uses Flow Testnet (`lab.blsqui.net`). When `false`, uses Flow Mainnet (`wallet.blsqui.net`). |
+| `isTestnet` | `boolean` | `true` | When `true`, connects to Flow Testnet (`lab.blsqui.net`). When `false`, connects to Flow Mainnet (`wallet.blsqui.net`). |
 | `useDefaultModal` | `boolean` | `true` | Whether to render the built-in in-game confirmation dialog. |
 | `displayMode` | `'tab' \| 'iframe'` | `'tab'` | Target container for the signer screen. `'tab'` opens a dedicated popup; `'iframe'` mounts an in-page overlay. |
-| `flixId` | `string` | FLIX ID | The FLIX interaction template identifier. |
-| `args` | `Record<string, string \| number>` | `undefined` | Key-value pairs forwarded to the signer for custom contract parameters. |
+| `flixId` | `string` | Default Fee Template | The FLIX (Flow Interaction Template) identifier. Defaults to the standard 10 FLOW entry template. |
+| `args` | `Record<string, string \| number>` | `undefined` | Key-value arguments passed into the Cadence interaction. (e.g. `{"to": "0x..."}`). |
 | `verbose` | `boolean` | `false` | When `true`, outputs detailed debug and polling logs to the browser console. |
 | `modalContent` | `ModalContentConfig` | `undefined` | Custom titles, leads, labels, and icon emojis for the default dialog. |
 
@@ -168,6 +168,7 @@ interface TransactionResult {
   to?: string;
   amount?: string;
   token?: string;
+  txFee?: string | null;
 }
 ```
 
