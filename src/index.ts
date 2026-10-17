@@ -1,11 +1,35 @@
 import type { TransactionOptions, TransactionResult, BlsquiStatus, BlsquiDisplayMode } from './types.js';
+import { currentUser, type BlsquiConfig } from './currentUser.js';
+import { WebRTCPresence } from './webRTCPresence.js';
 
 export * from './types.js';
+export * from './currentUser.js';
+export * from './webRTCPresence.js';
 
-/**
- * BlsquiSDK
- */
 export class BlsquiSDK {
+  public static readonly currentUser = currentUser;
+  public static readonly WebRTCPresence = WebRTCPresence;
+
+  public static config(cfg: BlsquiConfig): void {
+    currentUser.setConfig(cfg);
+  }
+
+  public static openDashboard(options?: { width?: number; height?: number }): Window | null {
+    return currentUser.openDashboard(options);
+  }
+
+  public static summonDashboard(): void {
+    currentUser.summonDashboard();
+  }
+
+  public static closeDashboardIframe(): void {
+    currentUser.closeDashboardIframe();
+  }
+
+  public static postMessageToDashboard(message: any, targetOrigin?: string): void {
+    currentUser.postMessageToDashboard(message, targetOrigin);
+  }
+
   // --- エンドポイント設定 ---
   public static readonly MAINNET_GATEWAY_URL: string = 'https://wallet.blsqui.net/transaction';
   public static readonly TESTNET_GATEWAY_URL: string = 'https://lab.blsqui.net/transaction';
