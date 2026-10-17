@@ -18,11 +18,12 @@ export interface SlotItem {
 
 export interface CurrentUserSession {
   addr: string | null;
+  avatarImage?: string | null;
+  userName?: string | null;
   loggedIn: boolean;
   network: 'testnet' | 'mainnet';
   slot: SlotItem[] | null;
   dashboardOpen: boolean;
-  rawPayload?: any;
 }
 
 export type UserSubscriptionCallback = (user: CurrentUserSession) => void;
@@ -242,9 +243,11 @@ export class CurrentUserManager {
 
       if (data.type === 'BLSQUI_USER_UPDATE' || data.type === 'BLSQUI_SLOT_SYNC') {
         this.setState({
-          addr: data.address || null,
-          slot: data.slot || [],
-          network: this.config.network
+            addr: event.data.address || this.userState.addr,
+            avatarImage: event.data.avatarImage ?? this.userState.avatarImage,
+            userName: event.data.userName ?? this.userState.userName,
+            slot: event.data.slot || [],
+            loggedIn: Boolean(event.data.address)
         });
       }
 

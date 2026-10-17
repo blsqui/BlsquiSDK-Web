@@ -3,6 +3,8 @@
   import { BlsquiSDK, type SlotItem } from '@blsqui/sdk-web';
 
   let currentAddress = $state('');
+  let userName = $state('');
+  let avatarImage = $state('');
   let isDashboardOpen = $state(false);
   let slotItems = $state<SlotItem[]>([]);
   let maxDeckSlots = $derived(slotItems.length);
@@ -16,15 +18,19 @@
       network: 'testnet'
     });
 
-    // 2. Central SDK subscription (Auth, Real-time Slot Sync, and IFrame lifecycle)
+    // 2. Central SDK subscription (Auth, Real-time Slot Sync, Profile & IFrame lifecycle)
     const unsubscribeUser = BlsquiSDK.currentUser.subscribe((user: any) => {
       isDashboardOpen = user.dashboardOpen;
 
       if (user.loggedIn && user.addr) {
         currentAddress = user.addr;
         slotItems = user.slot || [];
+        userName = user.userName;
+        avatarImage = user.avatarImage;
       } else {
         currentAddress = '';
+        userName = '';
+        avatarImage = '';
         slotItems = [];
       }
 
@@ -38,7 +44,6 @@
     };
   });
 
-  // Toggles the Patron Dashboard iframe docked to the right half of the screen
   function handleConnectDashboard() {
     BlsquiSDK.summonDashboard();
   }
@@ -47,25 +52,51 @@
 <div class="viewport">
   <img src="/game_background.jpeg" alt="Arena" class="bg-layer" />
 
-  <!-- Top-Left Floating Controls: Moved to left to leave right screen clear -->
+  <!-- Player Frame HUD -->
   <header class="hud-top-left">
-    <div class="hud-row">
-      {#if currentAddress}
-        <span class="wallet-badge font-mono">FLOW: {currentAddress.slice(0, 6)}...{currentAddress.slice(-4)}</span>
-        <span class="status-indicator" class:online={isDashboardOpen}>
-          ● {isDashboardOpen ? 'Live Peer' : 'Connecting...'}
-        </span>
-      {/if}
-    </div>
+    {#if isDashboardOpen}
+      <div class="player-unit-frame">
+        <!-- Diamond Portrait Container -->
+        <div class="portrait-diamond">
+          <div class="portrait-diamond-inner">
+            <img 
+              src={avatarImage || '/default_avatar.png'} 
+              alt={userName || '-'} 
+              class="portrait-img" 
+            />
+          </div>
+        </div>
 
-    <!-- Connect / Open Dashboard Button positioned on the left -->
+        <!-- Right Side: Vitals Bars & Name -->
+        <div class="vitals-block">
+          <div class="player-name-row">
+            <span class="player-name">{userName || ''}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Buffs & Status Pills Row -->
+      <div class="hud-sub-row">
+        <!-- FLOW Address Badge -->
+        <span class="wallet-badge font-mono">
+          FLOW: {currentAddress.slice(0, 6)}...{currentAddress.slice(-4)}
+        </span>
+
+        <!-- WebRTC Live Status -->
+        <span class="status-indicator" class:online={isDashboardOpen}>
+          <span class="dot">●</span> {isDashboardOpen ? 'Live Peer' : 'Connecting...'}
+        </span>
+      </div>
+    {/if}
+
+    <!-- Action Button -->
     <button class="connect-btn" onclick={handleConnectDashboard}>
-      ⚡ {currentAddress ? 'Open Patron Dashboard' : 'Connect Patron Dashboard'}
+      <span>{isDashboardOpen ? 'Close Dashboard' : 'Open Dashboard'}</span>
     </button>
   </header>
 
   <!-- In-Game Stage Deck Overlay: Styled identically to the Patron Dashboard -->
-  {#if currentAddress && equippedCount > 0}
+  {#if isDashboardOpen && equippedCount > 0}
     <div class="deck-hud-panel">
       <div class="deck-header">
         <div class="deck-title-group">
@@ -156,19 +187,166 @@
 
   .hud-top-left {
     position: absolute;
-    top: 9rem;
-    left: 1.25rem;
+    top: 1.0rem;
+    left: 1.6rem;
     z-index: 60;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 0.75rem;
+    user-select: none;
   }
 
-  .hud-row {
+  /* --- Unit Frame Layout --- */
+  .player-unit-frame {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    min-width: 320px;
+    height: 94px;
+    padding-left: 12px;
+  }
+
+  /* --- Diamond Portrait Frame --- */
+  .portrait-diamond {
+    position: absolute;
+    left: 8px;
+    top: 4px;
+    z-index: 10;
+    width: 82px;
+    height: 82px;
+    transform: rotate(45deg);
+    background: #0d121c;
+    border: 3px solid #333d4e;
+    box-shadow: 
+      0 0 0 1px #000,
+      0 8px 18px rgba(0, 0, 0, 0.85);
+    border-radius: 6px;
+    overflow: hidden;
     display: flex;
     align-items: center;
-    gap: 0.6rem;
+    justify-content: center;
+  }
+
+  .portrait-diamond-inner {
+    width: 114px;
+    height: 114px;
+    transform: rotate(-45deg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .portrait-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    pointer-events: none;
+  }
+
+  /* --- Vitals / Bars Container --- */
+  .vitals-block {
+    margin-left: 60px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(90deg, rgba(16, 21, 32, 0.95) 0%, rgba(13, 17, 24, 0.85) 85%, transparent 100%);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.8);
+    padding-left: 22px;
+    border-radius: 0 4px 4px 0;
+  }
+
+  .player-name-row {
+    margin-bottom: 4px;
+  }
+
+  .player-name {
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    color: #f1f5f9;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9), 0 0 8px rgba(0, 0, 0, 0.6);
+  }
+
+  /* --- Buffs & Status Pills Row --- */
+  .hud-sub-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 1rem;
+    margin-left: 8px;
+  }
+
+  /* FLOW Address Badge */
+  .wallet-badge {
+    font-size: 11px;
+    font-weight: 700;
+    color: #4ade80;
+    background: rgba(10, 35, 26, 0.85);
+    border: 1px solid rgba(34, 197, 94, 0.4);
+    padding: 3px 10px;
+    border-radius: 9999px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  }
+
+  /* Live Peer Indicator */
+  .status-indicator {
+    font-size: 11px;
+    font-weight: 700;
+    color: #f87171;
+    background: rgba(38, 18, 20, 0.85);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    padding: 3px 10px;
+    border-radius: 9999px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  }
+
+  .status-indicator.online {
+    color: #34d399;
+    background: rgba(10, 35, 26, 0.85);
+    border-color: rgba(34, 197, 94, 0.4);
+  }
+
+  .status-indicator .dot {
+    font-size: 9px;
+    line-height: 1;
+  }
+
+  /* Patron Dashboard Open Button */
+  .connect-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: fit-content;
+    padding: 7px 16px;
+    margin-left: 8px;
+    margin-top: 70px;
+    background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 8px;
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(2, 132, 199, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+    transition: transform 0.1s ease, filter 0.15s ease;
+  }
+
+  .connect-btn:hover {
+    filter: brightness(1.1);
+  }
+
+  .connect-btn:active {
+    transform: scale(0.97);
+  }
+
+  .btn-icon {
+    font-size: 12px;
   }
 
   .wallet-badge {
@@ -230,7 +408,7 @@
     background: rgba(11, 18, 27, 0.88);
     backdrop-filter: blur(16px);
     border: 1px solid rgba(56, 189, 248, 0.25);
-    border-radius: 14px;
+    border-radius: 7px;
     padding: 14px 16px;
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
   }
