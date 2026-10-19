@@ -1,6 +1,6 @@
 export interface BlsquiConfig {
   appId: string;
-  publisherId: string;
+  publisherAddress: string;
   network?: 'testnet' | 'mainnet';
 }
 
@@ -26,6 +26,11 @@ export interface CurrentUserSession {
   dashboardOpen: boolean;
 }
 
+export interface ScoutItemResult {
+  slotIndex: number;
+  itemId: string;
+}
+
 export type UserSubscriptionCallback = (user: CurrentUserSession) => void;
 
 export class CurrentUserManager {
@@ -34,7 +39,7 @@ export class CurrentUserManager {
   // Explicitly declared config property
   private config: BlsquiConfig = {
     appId: '',
-    publisherId: '',
+    publisherAddress: '',
     network: 'testnet'
   };
 
@@ -66,7 +71,7 @@ export class CurrentUserManager {
   public setConfig(cfg: BlsquiConfig): void {
     this.config = {
       appId: cfg.appId ? cfg.appId.toLowerCase().trim() : '',
-      publisherId: cfg.publisherId ? cfg.publisherId.toUpperCase().trim() : '',
+      publisherAddress: cfg.publisherAddress ? cfg.publisherAddress.trim() : '',
       network: cfg.network || 'testnet'
     };
     this.userState.network = this.config.network!;
@@ -108,7 +113,7 @@ export class CurrentUserManager {
 
     const params = new URLSearchParams();
     if (this.config.appId) params.set('app_id', this.config.appId);
-    if (this.config.publisherId) params.set('publisher_id', this.config.publisherId);
+    if (this.config.publisherAddress) params.set('publisher_address', this.config.publisherAddress);
 
     const fullUrl = `${baseUrl}/?${params.toString()}`;
 
@@ -143,7 +148,7 @@ export class CurrentUserManager {
 
     const params = new URLSearchParams();
     if (this.config.appId) params.set('app_id', this.config.appId);
-    if (this.config.publisherId) params.set('publisher_id', this.config.publisherId);
+    if (this.config.publisherAddress) params.set('publisher_address', this.config.publisherAddress);
 
     const fullUrl = `${baseUrl}/?${params.toString()}`;
 
@@ -260,6 +265,87 @@ export class CurrentUserManager {
     });
 
     this.isListeningToDashboard = true;
+  }
+
+  public async getStageSlots(options: {
+    targetAddress: string;
+    publisherAddress: string;
+    appId?: string;
+  }): Promise<SlotItem[]> {
+    const isTestnet = this.config.network !== 'mainnet';
+    const accessNode = isTestnet
+      ? 'https://rest-testnet.onflow.org'
+      : 'https://rest-mainnet.onflow.org';
+
+    const sesamePassContract = isTestnet
+      ? '0x975b04756864e9ea'
+      : '0xb576a3926d239682';
+
+    const cleanOpponent = options.targetAddress.startsWith('0x')
+      ? options.targetAddress
+      : `0x${options.targetAddress}`;
+    const cleanPublisher = options.publisherAddress.startsWith('0x')
+      ? options.publisherAddress
+      : `0x${options.publisherAddress}`;
+    const appId = options.appId || this.config.appId;
+
+    const cadenceScript = `
+      import SesamePass from ${sesamePassContract}
+
+      access(all) fun main(publisher: Address, user: Address, appId: String): [String]? {
+          return SesamePass.getUserItemSlots(publisher: publisher, user: user, appId: appId)
+      }
+    `;
+
+    try {
+      const scriptBase64 = btoa(cadenceScript);
+
+      const res = await fetch(`${accessNode}/v1/scripts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          script: scriptBase64,
+          arguments: [
+            btoa(JSON.stringify({ type: 'Address', value: cleanPublisher })),
+            btoa(JSON.stringify({ type: 'Address', value: cleanOpponent })),
+            btoa(JSON.stringify({ type: 'String', value: appId }))
+          ]
+        })
+      });
+      if (!res.ok) {
+        console.warn('[BlsquiSDK] Failed to query opponent slots:', await res.text());
+        return [];
+      }
+
+      const cadenceResponse = await res.json();
+
+      let parsed = cadenceResponse;
+
+      // If the response is a string, decode base64 or parse JSON
+      if (typeof parsed === 'string') {
+        try {
+          parsed = JSON.parse(parsed);
+        } catch {
+          try {
+            parsed = JSON.parse(atob(parsed.trim()));
+          } catch (e) {
+            console.error('Failed to parse cadenceResponse string:', e);
+            return [];
+          }
+        }
+      }
+
+      // Extract the Cadence optional array value
+      const rawArray = parsed?.value?.value || [];
+
+      return rawArray.map((entry: any, idx: number) => ({
+        slotIndex: idx + 1,
+        itemId: entry?.value || ''
+      }));
+    } catch (err) {
+      console.error('[BlsquiSDK] Error executing getStageSlots:', err);
+      return [];
+    }
   }
 }
 

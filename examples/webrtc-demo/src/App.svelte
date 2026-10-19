@@ -1,32 +1,38 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { BlsquiSDK, type SlotItem } from '@blsqui/sdk-web';
+  import { BlsquiSDK, type SlotItem, type TransactionResult } from '@blsqui/sdk-web';
+
+  const PUBLISHER_ADDRESS = '0x2f13c512df0b0ad7';
+  const OPPONENT_ADDRESS = '0x2f13c512df0b0ad7';
 
   let currentAddress = $state('');
   let userName = $state('');
   let avatarImage = $state('');
+  let isLoggedIn = $state(false);
   let isDashboardOpen = $state(false);
   let slotItems = $state<SlotItem[]>([]);
   let maxDeckSlots = $derived(slotItems.length);
   let equippedCount = $derived(slotItems.filter((s) => Boolean(s.itemId)).length);
+  let isPurchasingWeapon = $state(false);
 
   onMount(() => {
-    // 1. Configure Game Credentials
+    // SDK 初期化設定
     BlsquiSDK.config({
-      publisherId: 'BLSQUI_STUDIO',
+      publisherAddress: OPPONENT_ADDRESS,
       appId: 'valkyrie-vanguard',
       network: 'testnet'
     });
 
-    // 2. Central SDK subscription (Auth, Real-time Slot Sync, Profile & IFrame lifecycle)
+    // SDKセッション購読
     const unsubscribeUser = BlsquiSDK.currentUser.subscribe((user: any) => {
       isDashboardOpen = user.dashboardOpen;
+      isLoggedIn = Boolean(user.loggedIn && user.addr);
 
-      if (user.loggedIn && user.addr) {
+      if (isLoggedIn) {
         currentAddress = user.addr;
         slotItems = user.slot || [];
-        userName = user.userName;
-        avatarImage = user.avatarImage;
+        userName = user.userName || '';
+        avatarImage = user.avatarImage || '';
       } else {
         currentAddress = '';
         userName = '';
@@ -46,6 +52,80 @@
 
   function handleConnectDashboard() {
     BlsquiSDK.summonDashboard();
+  }
+
+  async function handleQuickWeaponPurchase() {
+    if (isPurchasingWeapon) return;
+    try {
+      isPurchasingWeapon = true;
+      const sealedReceipt: TransactionResult = await BlsquiSDK.requestTransaction({
+        isTestnet: true,
+        flixId: '1fdc90072ed488b74f407cfa45602efabf865eee7c7d4be6c30247ab56793ee6',
+        useDefaultModal: false
+      });
+
+      console.log('✅ Weapon purchased successfully:', sealedReceipt);
+    } catch (_) {
+    } finally {
+      isPurchasingWeapon = false;
+    }
+  }
+
+  const WEAPON_ITEM_ID = 'wpn_dragon_piercer_2';
+  const SHIELD_ITEM_ID = 'shd_valkyrie_aegis_2';
+  let equippedWeaponSlot = $derived(
+    slotItems.find((s) => s.itemId === WEAPON_ITEM_ID)
+  );
+  let isWeaponEquipped = $derived(Boolean(equippedWeaponSlot));
+  let equippedShieldSlot = $derived(
+    slotItems.find((s) => s.itemId === SHIELD_ITEM_ID)
+  );
+  let isShieldEquipped = $derived(Boolean(equippedShieldSlot));
+
+  // Action: Urge using Weapon
+  async function handleUseWeapon() {
+    if (!isWeaponEquipped) return;
+    BlsquiSDK.postMessageToDashboard({
+      type: 'TRIGGER_ITEM_ACTION',
+      itemId: WEAPON_ITEM_ID
+    });
+  }
+
+  // Action: Urge using Shield
+  async function handleUseShield() {
+    if (!isShieldEquipped) return;
+    BlsquiSDK.postMessageToDashboard({
+      type: 'TRIGGER_ITEM_ACTION',
+      itemId: SHIELD_ITEM_ID
+    });
+  }
+
+  let isScouting = $state(false);
+  let showOpponentDeck = $state(false);
+  let opponentSlots = $state<SlotItem[]>([]);
+  let opponentEquippedCount = $derived(opponentSlots.filter((s) => Boolean(s.itemId)).length);
+  let opponentMaxSlots = $derived(Math.max(5, opponentSlots.length));
+  async function handleScoutOpponent() {
+    if (isScouting) return;
+    // Toggle off if already showing
+    if (showOpponentDeck) {
+      showOpponentDeck = false;
+      return;
+    }
+    try {
+      isScouting = true;
+      const slots = await BlsquiSDK.getStageSlots({
+        targetAddress: OPPONENT_ADDRESS,
+        publisherAddress: PUBLISHER_ADDRESS
+      });
+      console.log(slots, 999)
+      opponentSlots = slots;
+      showOpponentDeck = true;
+    } catch (e) {
+      console.error('Failed to scout opponent:', e);
+    } finally {
+      isScouting = false;
+    }
   }
 </script>
 
@@ -77,23 +157,126 @@
 
       <!-- Buffs & Status Pills Row -->
       <div class="hud-sub-row">
-        <!-- FLOW Address Badge -->
-        <span class="wallet-badge font-mono">
-          FLOW: {currentAddress.slice(0, 6)}...{currentAddress.slice(-4)}
-        </span>
+        {#if isLoggedIn && currentAddress}
+          <!-- FLOW アドレス表示 -->
+          <span class="wallet-badge font-mono">
+            FLOW: {currentAddress.slice(0, 6)}...{currentAddress.slice(-4)}
+          </span>
 
-        <!-- WebRTC Live Status -->
-        <span class="status-indicator" class:online={isDashboardOpen}>
-          <span class="dot">●</span> {isDashboardOpen ? 'Live Peer' : 'Connecting...'}
-        </span>
+          <!-- ログイン時の WebRTC / Peer 接続状況 -->
+          <span class="status-indicator" class:online={isDashboardOpen}>
+            <span class="dot">●</span> {isDashboardOpen ? 'Live Peer' : 'Connecting...'}
+          </span>
+        {:else}
+          <!-- 未サインイン時の表示 -->
+          <span class="status-indicator offline">
+            <span class="dot">○</span> Guest / Not Signed In
+          </span>
+        {/if}
       </div>
     {/if}
-
-    <!-- Action Button -->
-    <button class="connect-btn" onclick={handleConnectDashboard}>
-      <span>{isDashboardOpen ? 'Close Dashboard' : 'Open Dashboard'}</span>
-    </button>
   </header>
+  <div class="hud-controller-container">
+    <div class="hud-diamond-grid">
+      <!-- Ambient Backdrop Ring -->
+      <div class="ambient-ring"></div>
+
+      <!-- TOP: ATK -->
+      <button 
+        type="button" 
+        class="diamond-btn btn-atk" 
+        class:disabled={!isWeaponEquipped}
+        disabled={!isWeaponEquipped}
+        onclick={handleUseWeapon}
+        title={isWeaponEquipped ? 'Use Dragon Piercer' : 'Dragon Piercer not equipped'}
+      >
+        <div class="diamond-content">
+          <svg class="hud-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+          </svg>
+          <span class="hud-label">ATK</span>
+        </div>
+      </button>
+
+      <!-- LEFT: SHOP (Quick Weapon Purchase) -->
+      <button
+        type="button" 
+        class="diamond-btn btn-shop" 
+        onclick={handleQuickWeaponPurchase}
+        disabled={isPurchasingWeapon}
+        title={isPurchasingWeapon ? 'Processing Purchase...' : 'Quick Weapons Shop'}
+      >
+        <div class="diamond-content">
+          {#if isPurchasingWeapon}
+            <!-- Loading Spinner Icon -->
+            <svg class="hud-icon animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+            </svg>
+            <span class="hud-label">MINTING</span>
+          {:else}
+            <!-- Shopping Bag Icon -->
+            <svg class="hud-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+            </svg>
+            <span class="hud-label">SHOP</span>
+          {/if}
+        </div>
+      </button>
+
+      <!-- CENTER: HUB -->
+      <button type="button" class="diamond-btn btn-hub" onclick={handleConnectDashboard} title="Open Dashboard Screen">
+        <div class="hub-backdrop"></div>
+        <div class="diamond-content">
+          <svg class="hud-icon hub-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+          </svg>
+          <span class="hud-label hub-label">{isDashboardOpen ? 'CLOSE' : 'HUB'}</span>
+        </div>
+      </button>
+
+      <!-- RIGHT: DEF -->
+      <button 
+        type="button"
+        class="diamond-btn btn-def" 
+        class:disabled={!isShieldEquipped}
+        disabled={!isShieldEquipped}
+        onclick={handleUseShield}
+        title={isShieldEquipped ? 'Activate Valkyrie Aegis' : 'Valkyrie Aegis not equipped'}
+      >
+        <div class="diamond-content">
+          <svg class="hud-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+          <span class="hud-label">DEF</span>
+        </div>
+      </button>
+
+      <!-- BOTTOM: SCOUT -->
+      <button 
+        type="button" 
+        class="diamond-btn btn-scout" 
+        onclick={handleScoutOpponent}
+        title={showOpponentDeck ? 'Hide Opponent Slots' : 'Inspect Opponent Slots'}
+      >
+        <div class="diamond-content">
+          {#if isScouting}
+            <svg class="hud-icon animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+            </svg>
+            <span class="hud-label">SCAN</span>
+          {:else}
+            <svg class="hud-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+            <span class="hud-label">{showOpponentDeck ? 'CLOSE' : 'SCOUT'}</span>
+          {/if}
+        </div>
+      </button>
+    </div>
+  </div>
 
   <!-- In-Game Stage Deck Overlay: Styled identically to the Patron Dashboard -->
   {#if isDashboardOpen && equippedCount > 0}
@@ -146,6 +329,55 @@
               <div class="empty-content">
                 <span class="plus-icon">+</span>
                 <span class="empty-text">空きスロット</span>
+              </div>
+            </div>
+          {/if}
+        {/each}
+      </div>
+    </div>
+  {/if}
+  <!-- Opponent's Deck Overlay (Sits directly to the right of Player Deck) -->
+  {#if showOpponentDeck}
+    <div class="deck-hud-panel opponent-deck-panel">
+      <div class="deck-header">
+        <div class="deck-title-group">
+          <span class="deck-title text-rose-400">ENEMY DECK ({OPPONENT_ADDRESS.slice(0, 6)}...{OPPONENT_ADDRESS.slice(-4)})</span>
+        </div>
+        <span class="deck-count font-mono text-rose-300">
+          {opponentEquippedCount} / {opponentMaxSlots} 検出
+        </span>
+      </div>
+
+      <div class="slots-grid">
+        {#each Array(opponentMaxSlots) as _, idx}
+          {@const oppItem = opponentSlots.find(s => s.slotIndex === idx + 1 && Boolean(s.itemId))}
+          
+          {#if oppItem}
+            <div class="slot-card filled border-rose-500/40 shadow-[0_0_15px_rgba(244,63,94,0.2)]">
+              <div class="card-top">
+                <span class="slot-label font-mono text-rose-400"><span class="dot text-rose-500">●</span> SLOT {idx + 1}</span>
+                <span class="badge-enemy font-mono">HOSTILE</span>
+              </div>
+              <div class="item-visual">
+                <span class="text-xs font-mono text-rose-300 font-bold px-1 text-center truncate">
+                  {oppItem.itemId}
+                </span>
+              </div>
+              <div class="card-bottom">
+                <span class="card-item-name text-rose-200 truncate">{oppItem.itemId}</span>
+                <div class="durability-row font-mono text-slate-400">
+                  <span>ACTIVE ON-CHAIN</span>
+                </div>
+              </div>
+            </div>
+          {:else}
+            <div class="slot-card empty">
+              <div class="card-top">
+                <span class="slot-label font-mono">SLOT {idx + 1}</span>
+                <span class="empty-tag font-mono">EMPTY</span>
+              </div>
+              <div class="empty-content">
+                <span class="empty-text">未装填</span>
               </div>
             </div>
           {/if}
@@ -215,7 +447,7 @@
     width: 82px;
     height: 82px;
     transform: rotate(45deg);
-    background: #0d121c;
+    background: white;
     border: 3px solid #333d4e;
     box-shadow: 
       0 0 0 1px #000,
@@ -273,7 +505,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-top: 1rem;
+    margin-top: 2rem;
     margin-left: 8px;
   }
 
@@ -314,41 +546,219 @@
     font-size: 9px;
     line-height: 1;
   }
+  .hud-controller-container {
+    position: absolute;
+    left: 1.5rem;
+    top: 38%;
+    transform: translateY(-38%);
+    z-index: 40;
+    user-select: none;
+  }
 
-  /* Patron Dashboard Open Button */
-  .connect-btn {
-    display: inline-flex;
+  .hud-diamond-grid {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(3, 80px);
+    grid-template-rows: repeat(3, 80px);
+    width: 240px;
+    height: 240px;
+    align-items: center;
+    justify-items: center;
+  }
+
+  /* Ambient backdrop blur ring */
+  .ambient-ring {
+    position: absolute;
+    inset: 16px;
+    border-radius: 50%;
+    border: 1px solid rgba(6, 182, 212, 0.2);
+    background: radial-gradient(circle, rgba(8, 51, 68, 0.3) 0%, transparent 70%);
+    filter: blur(4px);
+    pointer-events: none;
+  }
+
+  /* Base button styling */
+  .diamond-btn {
+    all: unset;
+    box-sizing: border-box;
+    display: flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-    width: fit-content;
-    padding: 7px 16px;
-    margin-left: 8px;
-    margin-top: 70px;
-    background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%);
-    border: 1px solid rgba(255, 255, 255, 0.35);
-    border-radius: 8px;
-    color: #ffffff;
-    font-size: 12px;
-    font-weight: 800;
-    letter-spacing: 0.02em;
     cursor: pointer;
-    box-shadow: 0 4px 12px rgba(2, 132, 199, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.4);
-    transition: transform 0.1s ease, filter 0.15s ease;
+    position: relative;
+    transition: all 0.2s ease;
   }
 
-  .connect-btn:hover {
-    filter: brightness(1.1);
+  .diamond-btn:active {
+    transform: scale(0.92);
+  }
+  /* Disabled / Deactivated State */
+  .diamond-btn:disabled,
+  .diamond-btn.disabled {
+    opacity: 0.25;
+    filter: grayscale(1);
+    cursor: not-allowed !important;
+    pointer-events: none;
+    box-shadow: none !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    background: #121214 !important;
   }
 
-  .connect-btn:active {
-    transform: scale(0.97);
+  .diamond-btn:disabled .hud-icon,
+  .diamond-btn:disabled .hud-label {
+    color: #71717a !important;
   }
 
-  .btn-icon {
-    font-size: 12px;
+  .diamond-btn:disabled:active {
+    transform: rotate(45deg) scale(1) !important; /* Prevent click scale bounce */
+  }
+  /* Diamond rotation and counter-rotation for outer buttons */
+  .btn-atk, .btn-shop, .btn-def, .btn-scout {
+    width: 64px;
+    height: 64px;
+    border-radius: 14px;
+    transform: rotate(45deg);
+    border: 1px solid transparent;
   }
 
+  .diamond-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    transform: rotate(-45deg);
+  }
+
+  .hud-icon {
+    width: 24px;
+    height: 24px;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6));
+    transition: transform 0.2s ease;
+  }
+
+  .diamond-btn:hover .hud-icon {
+    transform: scale(1.1);
+  }
+
+  .hud-label {
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    margin-top: 2px;
+  }
+
+  /* 1. TOP: ATK (Row 1, Col 2) */
+  .btn-atk {
+    grid-column: 2;
+    grid-row: 1;
+    background: linear-gradient(135deg, rgba(217, 119, 6, 0.35) 0%, #18181b 100%);
+    border-color: rgba(245, 158, 11, 0.45);
+  }
+  .btn-atk:hover {
+    border-color: #f59e0b;
+    box-shadow: 0 0 22px rgba(245, 158, 11, 0.55);
+  }
+  .btn-atk .hud-icon, .btn-atk .hud-label {
+    color: #fbbf24;
+  }
+
+  /* 2. LEFT: SHOP (Row 2, Col 1) */
+  .btn-shop {
+    grid-column: 1;
+    grid-row: 2;
+    background: linear-gradient(135deg, rgba(147, 51, 234, 0.35) 0%, #18181b 100%);
+    border-color: rgba(168, 85, 247, 0.45);
+  }
+  .btn-shop:hover {
+    border-color: #a855f7;
+    box-shadow: 0 0 22px rgba(168, 85, 247, 0.55);
+  }
+  .btn-shop .hud-icon, .btn-shop .hud-label {
+    color: #c084fc;
+  }
+
+  /* 3. CENTER: HUB (Row 2, Col 2 - Rounded square, NOT rotated) */
+  .btn-hub {
+    grid-column: 2;
+    grid-row: 2;
+    z-index: 10;
+    width: 76px;
+    height: 76px;
+    border-radius: 18px;
+    background: #09090b;
+    border: 2px solid rgba(34, 211, 238, 0.8);
+    box-shadow: 0 0 25px rgba(34, 211, 238, 0.35);
+    overflow: hidden;
+  }
+  .btn-hub:hover {
+    border-color: #67e8f9;
+    box-shadow: 0 0 35px rgba(34, 211, 238, 0.7);
+  }
+  .btn-hub .diamond-content {
+    transform: none; /* No counter-rotation needed */
+  }
+  .btn-hub .hud-icon {
+    width: 28px;
+    height: 28px;
+    color: #67e8f9;
+  }
+  .hub-label {
+    font-size: 10px;
+    font-weight: 900;
+    color: #67e8f9;
+    letter-spacing: 0.1em;
+  }
+  .hub-backdrop {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(6, 182, 212, 0.25) 0%, transparent 100%);
+    pointer-events: none;
+  }
+
+  /* 4. RIGHT: DEF (Row 2, Col 3) */
+  .btn-def {
+    grid-column: 3;
+    grid-row: 2;
+    background: linear-gradient(135deg, rgba(5, 150, 105, 0.35) 0%, #18181b 100%);
+    border-color: rgba(52, 211, 153, 0.45);
+  }
+  .btn-def:hover {
+    border-color: #34d399;
+    box-shadow: 0 0 22px rgba(52, 211, 153, 0.55);
+  }
+  .btn-def .hud-icon, .btn-def .hud-label {
+    color: #6ee7b7;
+  }
+
+  /* 5. BOTTOM: SCOUT (Row 3, Col 2) */
+  .btn-scout {
+    grid-column: 2;
+    grid-row: 3;
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.35) 0%, #18181b 100%);
+    border-color: rgba(59, 130, 246, 0.45);
+  }
+  .btn-scout:hover {
+    border-color: #60a5fa;
+    box-shadow: 0 0 22px rgba(59, 130, 246, 0.55);
+  }
+  .btn-scout .hud-icon, .btn-scout .hud-label {
+    color: #93c5fd;
+  }
+  .opponent-deck-panel {
+    left: calc(300px + 2.5rem) !important;
+    border-color: rgba(244, 63, 94, 0.4);
+    box-shadow: 0 16px 40px rgba(225, 29, 72, 0.25);
+  }
+  .badge-enemy {
+    font-size: 8px;
+    font-weight: 800;
+    color: #fda4af;
+    background: rgba(136, 19, 55, 0.7);
+    border: 1px solid rgba(244, 63, 94, 0.5);
+    padding: 1px 6px;
+    border-radius: 4px;
+    letter-spacing: 0.05em;
+  }
   .wallet-badge {
     font-size: 11px;
     color: #00ef8b;
@@ -373,29 +783,6 @@
     color: #00ef8b;
     border-color: rgba(0, 239, 139, 0.4);
     background: rgba(0, 239, 139, 0.15);
-  }
-
-  .connect-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 9px 18px;
-    font-family: ui-monospace, monospace;
-    font-size: 12px;
-    font-weight: 700;
-    color: #ffffff;
-    background: linear-gradient(135deg, #2563eb 0%, #06b6d4 100%);
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    border-radius: 8px;
-    cursor: pointer;
-    box-shadow: 0 4px 18px rgba(6, 182, 212, 0.35);
-    backdrop-filter: blur(8px);
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
-  }
-
-  .connect-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 22px rgba(6, 182, 212, 0.55);
   }
 
   /* --- Patron Dashboard Style Item Slots (Bottom-Left) --- */

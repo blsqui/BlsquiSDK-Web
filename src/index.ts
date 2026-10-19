@@ -1,5 +1,5 @@
 import type { TransactionOptions, TransactionResult, BlsquiStatus, BlsquiDisplayMode } from './types.js';
-import { currentUser, type BlsquiConfig } from './currentUser.js';
+import { currentUser, type BlsquiConfig, type SlotItem } from './currentUser.js';
 import { WebRTCPresence } from './webRTCPresence.js';
 
 export * from './types.js';
@@ -28,6 +28,14 @@ export class BlsquiSDK {
 
   public static postMessageToDashboard(message: any, targetOrigin?: string): void {
     currentUser.postMessageToDashboard(message, targetOrigin);
+  }
+
+  public static async getStageSlots(options: {
+    targetAddress: string;
+    publisherAddress: string;
+    appId?: string;
+  }): Promise<SlotItem[]> {
+    return currentUser.getStageSlots(options);
   }
 
   // --- エンドポイント設定 ---
