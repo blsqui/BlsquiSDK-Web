@@ -3,7 +3,6 @@
   import { BlsquiSDK, type SlotItem, type TransactionResult } from '@blsqui/sdk-web';
 
   const PUBLISHER_ADDRESS = '0x2f13c512df0b0ad7';
-  const OPPONENT_ADDRESS = '0x2f13c512df0b0ad7';
 
   let currentAddress = $state('');
   let userName = $state('');
@@ -18,13 +17,13 @@
   onMount(() => {
     // SDK 初期化設定
     BlsquiSDK.config({
-      publisherAddress: OPPONENT_ADDRESS,
+      publisherAddress: PUBLISHER_ADDRESS,
       appId: 'valkyrie-vanguard',
       network: 'testnet'
     });
 
     // SDKセッション購読
-    const unsubscribeUser = BlsquiSDK.currentUser.subscribe((user: any) => {
+    const unsubscribeUser = BlsquiSDK.currentUser.subscribe((user: any) => {console.log(user)
       isDashboardOpen = user.dashboardOpen;
       isLoggedIn = Boolean(user.loggedIn && user.addr);
 
@@ -40,6 +39,14 @@
         slotItems = [];
       }
 
+      // Check if an item use transaction just succeeded
+      if (user.lastUsedItem) {
+        const item = user.lastUsedItem;
+        user.lastUsedItem = null; // ⚡ Clear it immediately (* Setting this to null here prevents the same event from being triggered multiple times.)
+        alert(`[GAME] ITEM USED SUCCESSFULLY 🎉: ${item.itemId}`);
+        // Trigger game animations, durability UI updates, sound effects, etc.
+      }
+
       if (!user.dashboardOpen) {
         console.log('[SDK] Dashboard iframe closed');
       }
@@ -50,10 +57,12 @@
     };
   });
 
+  /** ① BlsquiSDK.summonDashboard sample */
   function handleConnectDashboard() {
     BlsquiSDK.summonDashboard();
   }
 
+  /** ② BlsquiSDK.requestTransaction sample */
   async function handleQuickWeaponPurchase() {
     if (isPurchasingWeapon) return;
     try {
@@ -71,35 +80,19 @@
     }
   }
 
+  /** ③ TRIGGER_ITEM_ACTION sample */
   const WEAPON_ITEM_ID = 'wpn_dragon_piercer_2';
   const SHIELD_ITEM_ID = 'shd_valkyrie_aegis_2';
-  let equippedWeaponSlot = $derived(
-    slotItems.find((s) => s.itemId === WEAPON_ITEM_ID)
-  );
-  let isWeaponEquipped = $derived(Boolean(equippedWeaponSlot));
-  let equippedShieldSlot = $derived(
-    slotItems.find((s) => s.itemId === SHIELD_ITEM_ID)
-  );
-  let isShieldEquipped = $derived(Boolean(equippedShieldSlot));
-
-  // Action: Urge using Weapon
-  async function handleUseWeapon() {
-    if (!isWeaponEquipped) return;
-    BlsquiSDK.postMessageToDashboard({
-      type: 'TRIGGER_ITEM_ACTION',
-      itemId: WEAPON_ITEM_ID
-    });
+  const equippedIds = $derived(new Set(slotItems.map((s) => s.itemId)));
+  const isWeaponEquipped = $derived(equippedIds.has(WEAPON_ITEM_ID));
+  const isShieldEquipped = $derived(equippedIds.has(SHIELD_ITEM_ID));
+  function handleUseItem(itemId: string) {
+    if (!equippedIds.has(itemId)) return;
+    BlsquiSDK.postMessageToDashboard({ type: 'TRIGGER_ITEM_ACTION', itemId });
   }
 
-  // Action: Urge using Shield
-  async function handleUseShield() {
-    if (!isShieldEquipped) return;
-    BlsquiSDK.postMessageToDashboard({
-      type: 'TRIGGER_ITEM_ACTION',
-      itemId: SHIELD_ITEM_ID
-    });
-  }
-
+  /** ④ BlsquiSDK.getStageSlots sample */
+  const OPPONENT_ADDRESS = '0x2f13c512df0b0ad7';
   let isScouting = $state(false);
   let showOpponentDeck = $state(false);
   let opponentSlots = $state<SlotItem[]>([]);
@@ -107,22 +100,20 @@
   let opponentMaxSlots = $derived(Math.max(5, opponentSlots.length));
   async function handleScoutOpponent() {
     if (isScouting) return;
-    // Toggle off if already showing
     if (showOpponentDeck) {
       showOpponentDeck = false;
       return;
     }
+    isScouting = true;
     try {
-      isScouting = true;
       const slots = await BlsquiSDK.getStageSlots({
         targetAddress: OPPONENT_ADDRESS,
         publisherAddress: PUBLISHER_ADDRESS
       });
-      console.log(slots, 999)
       opponentSlots = slots;
       showOpponentDeck = true;
     } catch (e) {
-      console.error('Failed to scout opponent:', e);
+      console.error('Failed to scout opponent slots:', e);
     } finally {
       isScouting = false;
     }
@@ -136,33 +127,31 @@
   <header class="hud-top-left">
     {#if isDashboardOpen}
       <div class="player-unit-frame">
-        <!-- Diamond Portrait Container -->
-        <div class="portrait-diamond">
-          <div class="portrait-diamond-inner">
-            <img 
-              src={avatarImage || '/default_avatar.png'} 
-              alt={userName || '-'} 
-              class="portrait-img" 
-            />
+        {#if avatarImage}
+          <div class="portrait-diamond">
+            <div class="portrait-diamond-inner">
+              <img
+                src={avatarImage || '/default_avatar.png'}
+                alt={userName || '-'}
+                class="portrait-img"
+              />
+            </div>
           </div>
-        </div>
-
-        <!-- Right Side: Vitals Bars & Name -->
-        <div class="vitals-block">
-          <div class="player-name-row">
-            <span class="player-name">{userName || ''}</span>
+        {/if}
+        {#if userName}
+          <div class="vitals-block">
+            <div class="player-name-row">
+              <span class="player-name">{userName || ''}</span>
+            </div>
           </div>
-        </div>
+        {/if}
       </div>
-
-      <!-- Buffs & Status Pills Row -->
       <div class="hud-sub-row">
         {#if isLoggedIn && currentAddress}
           <!-- FLOW アドレス表示 -->
           <span class="wallet-badge font-mono">
             FLOW: {currentAddress.slice(0, 6)}...{currentAddress.slice(-4)}
           </span>
-
           <!-- ログイン時の WebRTC / Peer 接続状況 -->
           <span class="status-indicator" class:online={isDashboardOpen}>
             <span class="dot">●</span> {isDashboardOpen ? 'Live Peer' : 'Connecting...'}
@@ -187,7 +176,7 @@
         class="diamond-btn btn-atk" 
         class:disabled={!isWeaponEquipped}
         disabled={!isWeaponEquipped}
-        onclick={handleUseWeapon}
+        onclick={() => handleUseItem(WEAPON_ITEM_ID)}
         title={isWeaponEquipped ? 'Use Dragon Piercer' : 'Dragon Piercer not equipped'}
       >
         <div class="diamond-content">
@@ -241,7 +230,7 @@
         class="diamond-btn btn-def" 
         class:disabled={!isShieldEquipped}
         disabled={!isShieldEquipped}
-        onclick={handleUseShield}
+        onclick={() => handleUseItem(SHIELD_ITEM_ID)}
         title={isShieldEquipped ? 'Activate Valkyrie Aegis' : 'Valkyrie Aegis not equipped'}
       >
         <div class="diamond-content">

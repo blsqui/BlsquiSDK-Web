@@ -24,6 +24,11 @@ export interface CurrentUserSession {
   network: 'testnet' | 'mainnet';
   slot: SlotItem[] | null;
   dashboardOpen: boolean;
+  lastUsedItem?: {
+    itemId: string;
+    serialNumber: number;
+    txId: string;
+  } | null;
 }
 
 export interface ScoutItemResult {
@@ -32,11 +37,11 @@ export interface ScoutItemResult {
 }
 
 export type UserSubscriptionCallback = (user: CurrentUserSession) => void;
+import { WebRTCPresence } from './webRTCPresence';
 
 export class CurrentUserManager {
   private static instance: CurrentUserManager | null = null;
 
-  // Explicitly declared config property
   private config: BlsquiConfig = {
     appId: '',
     publisherAddress: '',
@@ -51,14 +56,18 @@ export class CurrentUserManager {
     dashboardOpen: false
   };
 
+  private presence = new WebRTCPresence();
+  private sessionChannelKey: string | null = null;
+  private currentSecureRoom: string | null = null;
   private subscribers: Set<UserSubscriptionCallback> = new Set();
   private dashboardWindow: Window | null = null;
   private activeIframeContainer: HTMLElement | null = null;
   private activeIframeWindow: Window | null = null;
   private isListeningToDashboard: boolean = false;
+  private heartbeatInterval: any = null;
 
   private constructor() {
-    this.initMessageListener();
+    this.initPresenceListener();
   }
 
   public static getInstance(): CurrentUserManager {
@@ -81,6 +90,37 @@ export class CurrentUserManager {
     return { ...this.config };
   }
 
+  // Generate 256-bit cryptographically secure hex key
+  private generateSecureChannelKey(): string {
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      const bytes = new Uint8Array(32);
+      crypto.getRandomValues(bytes);
+      return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    }
+    return Math.random().toString(16).substring(2) + Date.now().toString(16);
+  }
+
+  public getOrCreateChannelKey(): string {
+    if (!this.sessionChannelKey) {
+      this.sessionChannelKey = this.generateSecureChannelKey();
+    }
+    return this.sessionChannelKey;
+  }
+
+  // Derive SHA-256(channelKey : userAddress)
+  public async deriveSecureRoomId(addr: string, key: string): Promise<string> {
+    const cleanAddr = addr.toLowerCase().trim();
+    if (!key) return cleanAddr;
+    const enc = new TextEncoder();
+    const hashBuffer = await crypto.subtle.digest(
+      'SHA-256',
+      enc.encode(`${key}:${cleanAddr}`)
+    );
+    return Array.from(new Uint8Array(hashBuffer))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+
   public subscribe(callback: UserSubscriptionCallback): () => void {
     this.subscribers.add(callback);
     callback(this.userState);
@@ -94,11 +134,20 @@ export class CurrentUserManager {
   }
 
   public setState(updates: Partial<CurrentUserSession>): void {
+    const prevLoggedIn = this.userState.loggedIn;
+
     this.userState = {
       ...this.userState,
       ...updates,
       loggedIn: Boolean(updates.addr ?? this.userState.addr)
     };
+
+    // Auto-manage heartbeat when session login state flips
+    if (!prevLoggedIn && this.userState.loggedIn) {
+      this.startHostPresenceHeartbeat();
+    } else if (prevLoggedIn && !this.userState.loggedIn) {
+      this.stopHostPresenceHeartbeat();
+    }
 
     for (const sub of this.subscribers) {
       sub(this.userState);
@@ -146,9 +195,22 @@ export class CurrentUserManager {
     const isTestnet = this.config.network !== 'mainnet';
     const baseUrl = isTestnet ? 'https://lab.blsqui.net' : 'https://wallet.blsqui.net';
 
+    // Generate or retrieve the ephemeral 256-bit random channel key
+    const channelKey = this.getOrCreateChannelKey();
+
+    // Connect the game to Pion Hub immediately using the channelKey as the room ID
+    if (this.currentSecureRoom !== channelKey) {
+      this.currentSecureRoom = channelKey;
+      console.log(`[SDK] Connecting game presence to secure room: ${channelKey.slice(0, 8)}...`);
+      this.presence.init(channelKey, 'game');
+    }
+
+    // Build query params for the iframe
     const params = new URLSearchParams();
     if (this.config.appId) params.set('app_id', this.config.appId);
     if (this.config.publisherAddress) params.set('publisher_address', this.config.publisherAddress);
+    if (this.userState.addr) params.set('addr', this.userState.addr);
+    params.set('channel_key', channelKey); // Pass channel_key to Dashboard iframe
 
     const fullUrl = `${baseUrl}/?${params.toString()}`;
 
@@ -205,66 +267,128 @@ export class CurrentUserManager {
     this.activeIframeContainer = container;
     this.activeIframeWindow = iframe.contentWindow;
 
-    // Notify subscribers that the dashboard is now open
     this.setState({ dashboardOpen: true });
   }
 
   public closeDashboardIframe(): void {
-    if (!this.activeIframeContainer) return;
+    if (this.activeIframeContainer) {
+      this.activeIframeContainer.remove();
+      this.activeIframeContainer = null;
+      this.activeIframeWindow = null;
+      this.setState({ dashboardOpen: false });
 
-    // Remove DOM container
-    this.activeIframeContainer.remove();
-    this.activeIframeContainer = null;
-    this.activeIframeWindow = null;
-
-    // Notify subscribers that the dashboard was closed
-    this.setState({ dashboardOpen: false });
+      // Clean up presence when iframe is closed
+      this.presence.cleanup();
+      this.currentSecureRoom = null;
+      this.sessionChannelKey = null; // Rotate token on close
+    }
   }
 
   public postMessageToDashboard(message: any, targetOrigin: string = '*'): void {
     if (this.activeIframeWindow) {
       this.activeIframeWindow.postMessage(message, targetOrigin);
+    } else if (this.dashboardWindow && !this.dashboardWindow.closed) {
+      this.dashboardWindow.postMessage(message, targetOrigin);
     } else {
       const iframeEl = document.querySelector('iframe[title="Blsqui Equip Stage"]') as HTMLIFrameElement | null;
       if (iframeEl && iframeEl.contentWindow) {
         iframeEl.contentWindow.postMessage(message, targetOrigin);
-      } else {
-        console.warn('[BlsquiSDK] No active dashboard iframe found to receive postMessage.');
       }
     }
   }
 
-  private initMessageListener(): void {
-    if (this.isListeningToDashboard || typeof window === 'undefined') return;
+  private startHostPresenceHeartbeat(): void {
+    this.stopHostPresenceHeartbeat();
 
-    window.addEventListener('message', (event: MessageEvent) => {
-      const allowedOrigins = ['https://lab.blsqui.net', 'https://wallet.blsqui.net'];
-      const isLocal = event.origin.includes('localhost') || event.origin.includes('127.0.0.1');
+    // Immediately send pong / live status
+    this.sendPresenceLiveSignal();
 
-      if (!allowedOrigins.includes(event.origin) && !isLocal) return;
+    // Ping every 10 seconds to keep Dashboard informed
+    this.heartbeatInterval = setInterval(() => {
+      this.sendPresenceLiveSignal();
+    }, 10000);
+  }
 
-      const data = event.data;
-      if (!data || typeof data !== 'object') return;
+  private stopHostPresenceHeartbeat(): void {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+  }
 
-      if (data.type === 'BLSQUI_USER_UPDATE' || data.type === 'BLSQUI_SLOT_SYNC') {
-        this.setState({
-            addr: event.data.address || this.userState.addr,
-            avatarImage: event.data.avatarImage ?? this.userState.avatarImage,
-            userName: event.data.userName ?? this.userState.userName,
-            slot: event.data.slot || [],
-            loggedIn: Boolean(event.data.address)
+  private sendPresenceLiveSignal(): void {
+    this.postMessageToDashboard({
+      type: 'PRESENCE_PONG',
+      role: 'game',
+      player: this.userState.addr ? this.userState.addr.toLowerCase() : '',
+      status: 'LIVE',
+      game_online: true,
+      timestamp: Date.now()
+    });
+  }
+
+  private initPresenceListener(): void {
+    this.presence.onMessage((msg: any) => {
+      if (!msg || typeof msg !== 'object') return;
+
+      // Live Heartbeat / Ping response
+      if (msg.type === 'PRESENCE_PING') {
+        this.presence.send({
+          type: 'PRESENCE_PONG',
+          role: 'game',
+          player: this.userState.addr ? this.userState.addr.toLowerCase() : '',
+          status: 'LIVE',
+          game_online: true,
+          timestamp: Date.now()
         });
+        return;
       }
 
-      if (data.type === 'BLSQUI_LOGOUT') {
+      // User & Slot Sync from Dashboard over WebRTC
+      if (msg.type === 'BLSQUI_USER_UPDATE' || msg.type === 'SLOT_SYNC' || msg.type === 'BLSQUI_SLOT_SYNC') {
+        this.setState({
+          addr: msg.address || msg.player || this.userState.addr,
+          avatarImage: msg.avatarImage ?? msg.avatar_image ?? this.userState.avatarImage,
+          userName: msg.userName ?? msg.user_name ?? this.userState.userName,
+          slot: msg.slot || msg.slots || [],
+          loggedIn: Boolean(msg.address || msg.player || this.userState.addr)
+        });
+        return;
+      }
+
+      // Stage Slot Reorder / Equip from Dashboard over WebRTC
+      if (msg.type === 'STAGE_REORDERED' || msg.type === 'ITEM_EQUIPPED') {
+        if (Array.isArray(msg.slots)) {
+          this.setState({
+            slot: msg.slots
+          });
+        }
+        return;
+      }
+
+      // Logout event from Dashboard
+      if (msg.type === 'BLSQUI_LOGOUT') {
         this.setState({
           addr: null,
-          slot: null
+          loggedIn: false,
+          slot: null,
+          avatarImage: null,
+          userName: null
+        });
+        return;
+      }
+
+      // Item Use confirmation
+      if (msg.type === 'ITEM_USE_COMPLETED') {
+        this.setState({
+          lastUsedItem: {
+            itemId: msg.itemId,
+            serialNumber: msg.serialNumber,
+            txId: msg.txId
+          }
         });
       }
     });
-
-    this.isListeningToDashboard = true;
   }
 
   public async getStageSlots(options: {
@@ -281,7 +405,7 @@ export class CurrentUserManager {
       ? '0x975b04756864e9ea'
       : '0xb576a3926d239682';
 
-    const cleanOpponent = options.targetAddress.startsWith('0x')
+    const cleanTarget = options.targetAddress.startsWith('0x')
       ? options.targetAddress
       : `0x${options.targetAddress}`;
     const cleanPublisher = options.publisherAddress.startsWith('0x')
@@ -307,21 +431,20 @@ export class CurrentUserManager {
           script: scriptBase64,
           arguments: [
             btoa(JSON.stringify({ type: 'Address', value: cleanPublisher })),
-            btoa(JSON.stringify({ type: 'Address', value: cleanOpponent })),
+            btoa(JSON.stringify({ type: 'Address', value: cleanTarget })),
             btoa(JSON.stringify({ type: 'String', value: appId }))
           ]
         })
       });
+
       if (!res.ok) {
-        console.warn('[BlsquiSDK] Failed to query opponent slots:', await res.text());
+        console.warn('[BlsquiSDK] Failed to query target slots:', await res.text());
         return [];
       }
 
       const cadenceResponse = await res.json();
-
       let parsed = cadenceResponse;
 
-      // If the response is a string, decode base64 or parse JSON
       if (typeof parsed === 'string') {
         try {
           parsed = JSON.parse(parsed);
@@ -335,7 +458,6 @@ export class CurrentUserManager {
         }
       }
 
-      // Extract the Cadence optional array value
       const rawArray = parsed?.value?.value || [];
 
       return rawArray.map((entry: any, idx: number) => ({

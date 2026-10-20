@@ -10,6 +10,13 @@ export interface WebRTCPresenceState {
 
 export type StateListener = (state: WebRTCPresenceState) => void;
 
+export type TransactionRequestHandler = (params: {
+  flixId: string;
+  itemId: string;
+  serialNumber: number;
+  itemName?: string;
+}) => Promise<string | null>;
+
 export class WebRTCPresence {
   private _state: WebRTCPresenceState = {
     connected: false,
@@ -24,6 +31,11 @@ export class WebRTCPresence {
   private stateListeners: Set<StateListener> = new Set();
   private activeAddress: string | null = null;
   private isConnecting = false;
+  private onTransactionRequest: TransactionRequestHandler | null = null;
+
+  public setTransactionRequestHandler(handler: TransactionRequestHandler) {
+    this.onTransactionRequest = handler;
+  }
 
   /**
    * Current snapshot of the WebRTC connection state
@@ -190,12 +202,59 @@ export class WebRTCPresence {
     }
   }
 
-  private handleIncomingMessage(msg: any) {
+  private async handleIncomingMessage(msg: any) {
     if (msg.type === 'PRESENCE_UPDATE') {
       this.updateState({
         gameOnline: msg.status === 'GAME_CONNECTED',
         canUseItem: Boolean(msg.can_use_item)
       });
+    }
+
+    // Direct Execution
+    if (msg.type === 'ITEM_USE_REQUESTED') {
+      const { itemId, serialNumber, flixId, isTestnet } = msg;
+
+      console.log(`[SDK] Executing durability consumption for ${itemId} #${serialNumber}`);
+
+      try {
+        const { BlsquiSDK } = await import('./index');
+
+        const result: any = await BlsquiSDK.requestTransaction({
+          isTestnet: isTestnet ?? true,
+          flixId: flixId,
+          args: {
+            itemId: itemId,
+            serialNumber: Number(serialNumber)
+          },
+          useDefaultModal: false
+        });
+
+        // Check seal status
+        const isSuccess = result?.status === 'SEALED' || Boolean(result?.txId);
+
+        if (isSuccess) {
+          console.log(`[SDK] Item action confirmed on Flow! TxID: ${result?.txId}`);
+
+          // Notify Dashboard over WebRTC DataChannel
+          this.send({
+            type: 'ITEM_USED',
+            itemId,
+            serialNumber: Number(serialNumber),
+            txId: String(result?.txId),
+            timestamp: Date.now()
+          });
+
+          // Also dispatch to local listeners so currentUser / game can react
+          this.handleIncomingMessage({
+            type: 'ITEM_USE_COMPLETED',
+            itemId,
+            serialNumber: Number(serialNumber),
+            txId: String(result?.txId)
+          });
+        }
+      } catch (err) {
+        console.error('[SDK] Transaction rejected or failed:', err);
+      }
     }
 
     for (const listener of this.messageListeners) {
