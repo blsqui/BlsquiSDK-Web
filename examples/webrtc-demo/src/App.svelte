@@ -18,7 +18,7 @@
     // SDK 初期化設定
     BlsquiSDK.config({
       publisherAddress: PUBLISHER_ADDRESS,
-      appId: 'valkyrie-vanguard',
+      appId: 'valkyrie_vanguard',
       network: 'testnet'
     });
 
@@ -57,19 +57,19 @@
     };
   });
 
-  /** ① BlsquiSDK.summonDashboard sample */
+  /** ① BlsquiSDK.summonDashboard Sample */
   function handleConnectDashboard() {
     BlsquiSDK.summonDashboard();
   }
 
-  /** ② BlsquiSDK.requestTransaction sample */
+  /** ② BlsquiSDK.requestTransaction Sample */
   async function handleQuickWeaponPurchase() {
     if (isPurchasingWeapon) return;
     try {
       isPurchasingWeapon = true;
       const sealedReceipt: TransactionResult = await BlsquiSDK.requestTransaction({
         isTestnet: true,
-        flixId: '1fdc90072ed488b74f407cfa45602efabf865eee7c7d4be6c30247ab56793ee6',
+        flixId: 'b43f88e309922dc73bbd577773adc0f10aa12912ae4718113c0a844f76b0d4a4',
         useDefaultModal: false
       });
 
@@ -80,7 +80,7 @@
     }
   }
 
-  /** ③ TRIGGER_ITEM_ACTION sample */
+  /** ③ triggerItemAction Sample */
   const WEAPON_ITEM_ID = 'wpn_dragon_piercer_2';
   const SHIELD_ITEM_ID = 'shd_valkyrie_aegis_2';
   const equippedIds = $derived(new Set(slotItems.map((s) => s.itemId)));
@@ -88,10 +88,10 @@
   const isShieldEquipped = $derived(equippedIds.has(SHIELD_ITEM_ID));
   function handleUseItem(itemId: string) {
     if (!equippedIds.has(itemId)) return;
-    BlsquiSDK.postMessageToDashboard({ type: 'TRIGGER_ITEM_ACTION', itemId });
+    BlsquiSDK.triggerItemAction({ itemId });
   }
 
-  /** ④ BlsquiSDK.getStageSlots sample */
+  /** ④ BlsquiSDK.getStageSlots Sample */
   const OPPONENT_ADDRESS = '0x2f13c512df0b0ad7';
   let isScouting = $state(false);
   let showOpponentDeck = $state(false);
@@ -116,6 +116,97 @@
       console.error('Failed to scout opponent slots:', e);
     } finally {
       isScouting = false;
+    }
+  }
+
+  // Shop Modal State
+  let isShopModalOpen = $state(false);
+  let purchasingItemId = $state<string | null>(null);
+
+  interface ShopItem {
+    id: string;
+    name: string;
+    image: string;
+    price: string;
+    flixId: string;
+  }
+
+  const SHOP_ITEMS: ShopItem[] = [
+    {
+      id: 'shd_valkyrie_aegis_2',
+      name: 'Valkyrie Shield Ⅱ',
+      image: 'https://assets.blsqui.net/items/0x2f13c512df0b0ad7/valkyrie-vanguard/shd_valkyrie_aegis_2.webp',
+      price: '5.0 FLOW',
+      flixId: 'b43f88e309922dc73bbd577773adc0f10aa12912ae4718113c0a844f76b0d4a4'
+    },
+    {
+      id: 'wpn_dragon_piercer_2',
+      name: 'Dragon Piercer II',
+      image: 'https://assets.blsqui.net/items/0x2f13c512df0b0ad7/valkyrie-vanguard/dragon_piercer.webp',
+      price: '10.0 FLOW',
+      flixId: 'b43f88e309922dc73bbd577773adc0f10aa12912ae4718113c0a844f76b0d4a4'
+    },
+    {
+      id: 'wpn_dragon_piercer',
+      name: 'Dragon Piercer',
+      image: 'https://assets.blsqui.net/items/0x2f13c512df0b0ad7/valkyrie-vanguard/wpn_dragon_piercer.webp',
+      price: '7.0 FLOW',
+      flixId: 'b43f88e309922dc73bbd577773adc0f10aa12912ae4718113c0a844f76b0d4a4'
+    },
+    {
+      id: 'shd_valkyrie_aegis',
+      name: 'Valkyrie Shield',
+      image: 'https://assets.blsqui.net/items/0x2f13c512df0b0ad7/valkyrie-vanguard/shd_valkyrie_aegis.webp',
+      price: '4.0 FLOW',
+      flixId: 'b43f88e309922dc73bbd577773adc0f10aa12912ae4718113c0a844f76b0d4a4'
+    }
+  ];
+
+  function toggleShopModal() {
+    isShopModalOpen = !isShopModalOpen;
+  }
+
+  async function handleBuyItem(item: ShopItem) {
+    if (purchasingItemId) return;
+    try {
+      purchasingItemId = item.id;
+      let sealedReceipt: TransactionResult
+      switch(purchasingItemId) {
+        case "shd_valkyrie_aegis":
+          sealedReceipt = await BlsquiSDK.requestTransaction({
+              isTestnet: true,
+              flixId: 'cf2a6a6bf2c16b475e7e983aa5f123b8501197ea111fba8aa301434688d6fdcd',
+              useDefaultModal: false
+          });
+          console.log(sealedReceipt);
+          break;
+        case "wpn_dragon_piercer":
+          sealedReceipt = await BlsquiSDK.requestTransaction({
+              isTestnet: true,
+              flixId: '0615b52ebfa18b3786fddfeb6b07865e7ca101228a866b14e521b940d4ba7161',
+              useDefaultModal: false
+          });
+          console.log(sealedReceipt);
+
+          break;
+        case "wpn_dragon_piercer_2":
+
+          sealedReceipt = await BlsquiSDK.requestTransaction({
+              isTestnet: true,
+              flixId: '351d9d6f23ebe5ddbe9bf5b4f937a352c5caaa6a4439b5e464f3b16c1d671472',
+              useDefaultModal: false
+          });
+          console.log(sealedReceipt);
+
+          break;
+        case "shd_valkyrie_aegis_2":
+
+          break;
+      }
+    } catch (err) {
+      console.warn('Purchase cancelled or failed:', err);
+    } finally {
+      purchasingItemId = null;
     }
   }
 </script>
@@ -156,11 +247,6 @@
           <span class="status-indicator" class:online={isDashboardOpen}>
             <span class="dot">●</span> {isDashboardOpen ? 'Live Peer' : 'Connecting...'}
           </span>
-        {:else}
-          <!-- 未サインイン時の表示 -->
-          <span class="status-indicator offline">
-            <span class="dot">○</span> Guest / Not Signed In
-          </span>
         {/if}
       </div>
     {/if}
@@ -191,9 +277,8 @@
       <button
         type="button" 
         class="diamond-btn btn-shop" 
-        onclick={handleQuickWeaponPurchase}
-        disabled={isPurchasingWeapon}
-        title={isPurchasingWeapon ? 'Processing Purchase...' : 'Quick Weapons Shop'}
+        onclick={toggleShopModal}
+        title="Open Armory Shop"
       >
         <div class="diamond-content">
           {#if isPurchasingWeapon}
@@ -371,6 +456,50 @@
             </div>
           {/if}
         {/each}
+      </div>
+    </div>
+  {/if}
+  <!-- Armory Shop Modal -->
+  {#if isShopModalOpen}
+    <div class="shop-modal-overlay" onclick={toggleShopModal}>
+      <div class="shop-modal-window" onclick={(e) => e.stopPropagation()}>
+        <!-- Shop Header with Custom Background -->
+        <div class="shop-modal-header">
+          <div class="shop-header-overlay"></div>
+          <div class="shop-header-content">
+            <h2 class="shop-title">VALKYRIE ARMORY</h2>
+            <p class="shop-subtitle">Official Equipment Items</p>
+          </div>
+          <button type="button" class="shop-close-btn" onclick={toggleShopModal}>✕</button>
+        </div>
+
+        <!-- Items 4-Grid -->
+        <div class="shop-items-grid">
+          {#each SHOP_ITEMS as item (item.id)}
+            <div class="shop-item-card">
+              <div class="shop-item-image-wrapper">
+                <img src={item.image} alt={item.name} class="shop-item-img" />
+              </div>
+              <div class="shop-item-info">
+                <span class="shop-item-name truncate">{item.name}</span>
+                <span class="shop-item-price font-mono">{item.price}</span>
+              </div>
+              <button
+                type="button"
+                class="shop-buy-btn font-mono"
+                class:loading={purchasingItemId === item.id}
+                disabled={Boolean(purchasingItemId)}
+                onclick={() => handleBuyItem(item)}
+              >
+                {#if purchasingItemId === item.id}
+                  MINTING...
+                {:else}
+                  BUY NOW
+                {/if}
+              </button>
+            </div>
+          {/each}
+        </div>
       </div>
     </div>
   {/if}
@@ -959,5 +1088,208 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  /* =========================================================================
+   Armory Shop Modal (Vanilla CSS)
+   ========================================================================= */
+  .shop-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    background: rgba(4, 7, 14, 0.78);
+    backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    animation: fadeIn 0.2s ease-out;
+  }
+
+  .shop-modal-window {
+    width: 100%;
+    max-width: 680px;
+    background: #0d111a;
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 25px rgba(56, 189, 248, 0.15);
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Header with armory_shop.jpg background */
+  .shop-modal-header {
+    position: relative;
+    height: 120px;
+    background-image: url('https://blsqui.net/assets/pr/armory_shop.jpg');
+    background-size: cover;
+    background-position: center;
+    display: flex;
+    align-items: flex-end;
+    padding: 16px 20px;
+  }
+
+  .shop-header-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(13, 17, 26, 0.3) 0%, rgba(13, 17, 26, 0.95) 100%);
+  }
+
+  .shop-header-content {
+    position: relative;
+    z-index: 2;
+  }
+
+  .shop-title {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    color: #f8fafc;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+  }
+
+  .shop-subtitle {
+    margin: 2px 0 0;
+    font-size: 0.78rem;
+    color: #38bdf8;
+    letter-spacing: 0.05em;
+    font-family: monospace;
+  }
+
+  .shop-close-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 5;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(15, 23, 42, 0.75);
+    color: #94a3b8;
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+  }
+
+  .shop-close-btn:hover {
+    background: #ef4444;
+    color: #ffffff;
+    border-color: #ef4444;
+  }
+
+  /* Items Grid */
+  .shop-items-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    padding: 18px 20px 22px;
+    background: #0d111a;
+  }
+
+  @media (max-width: 640px) {
+    .shop-items-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  .shop-item-card {
+    background: #131926;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    transition: transform 0.15s ease, border-color 0.15s ease;
+  }
+
+  .shop-item-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(56, 189, 248, 0.45);
+  }
+
+  .shop-item-image-wrapper {
+    width: 84px;
+    height: 84px;
+    border-radius: 8px;
+    background: #090d15;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px;
+    margin-bottom: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.04);
+  }
+
+  .shop-item-img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+
+  .shop-item-info {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 10px;
+    text-align: center;
+  }
+
+  .shop-item-name {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #e2e8f0;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .shop-item-price {
+    font-size: 0.72rem;
+    color: #38bdf8;
+    margin-top: 3px;
+    font-weight: 600;
+  }
+
+  /* Buy Action Button */
+  .shop-buy-btn {
+    width: 100%;
+    padding: 6px 0;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: #0b111e;
+    background: #38bdf8;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .shop-buy-btn:hover:not(:disabled) {
+    background: #7dd3fc;
+    box-shadow: 0 0 12px rgba(56, 189, 248, 0.5);
+  }
+
+  .shop-buy-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .shop-buy-btn.loading {
+    background: #f59e0b;
+    color: #ffffff;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
 </style>

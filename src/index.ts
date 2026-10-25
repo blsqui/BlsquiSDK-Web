@@ -1,10 +1,46 @@
 import type { TransactionOptions, TransactionResult, BlsquiStatus, BlsquiDisplayMode } from './types.js';
-import { currentUser, type BlsquiConfig, type SlotItem } from './currentUser.js';
+import {
+  currentUser,
+  CurrentUserManager,
+  type BlsquiConfig,
+  type CurrentUserSession,
+  type SlotItem,
+  type ScoutItemResult,
+  type UserSubscriptionCallback
+} from './currentUser.js';
 import { WebRTCPresence } from './webRTCPresence.js';
 
 export * from './types.js';
 export * from './currentUser.js';
 export * from './webRTCPresence.js';
+
+export type {
+  TransactionOptions,
+  TransactionResult,
+  BlsquiStatus,
+  BlsquiDisplayMode
+} from './types.js';
+
+export {
+  currentUser,
+  CurrentUserManager,
+  WebRTCPresence,
+  type BlsquiConfig,
+  type CurrentUserSession,
+  type SlotItem,
+  type ScoutItemResult,
+  type UserSubscriptionCallback
+};
+
+export interface TriggerItemActionOptions {
+  itemId: string;
+  targetOrigin?: string;
+}
+
+export interface DashboardMessage {
+  type: string;
+  [key: string]: unknown;
+}
 
 export class BlsquiSDK {
   public static readonly currentUser = currentUser;
@@ -26,8 +62,17 @@ export class BlsquiSDK {
     currentUser.closeDashboardIframe();
   }
 
-  public static postMessageToDashboard(message: any, targetOrigin?: string): void {
-    currentUser.postMessageToDashboard(message, targetOrigin);
+  public static postMessageToDashboard(message: DashboardMessage): void {
+    currentUser.sendToDashboard(message);
+  }
+
+  public static triggerItemAction(options: TriggerItemActionOptions | string): void {
+    const itemId = typeof options === 'string' ? options : options?.itemId;
+    if (!itemId) {
+      console.warn('[BlsquiSDK] triggerItemAction called without an itemId');
+      return;
+    }
+    currentUser.triggerItemAction(itemId);
   }
 
   public static async getStageSlots(options: {

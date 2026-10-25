@@ -1,7 +1,11 @@
+import { WebRTCPresence } from './webRTCPresence.js';
+
+export type NetworkType = 'testnet' | 'mainnet';
+
 export interface BlsquiConfig {
   appId: string;
   publisherAddress: string;
-  network?: 'testnet' | 'mainnet';
+  network?: NetworkType;
 }
 
 export interface SlotItem {
@@ -16,19 +20,21 @@ export interface SlotItem {
   publisherAddress?: string;
 }
 
+export interface ItemUsedEvent {
+  itemId: string;
+  serialNumber: number;
+  txId: string;
+}
+
 export interface CurrentUserSession {
   addr: string | null;
   avatarImage?: string | null;
   userName?: string | null;
   loggedIn: boolean;
-  network: 'testnet' | 'mainnet';
+  network: NetworkType;
   slot: SlotItem[] | null;
   dashboardOpen: boolean;
-  lastUsedItem?: {
-    itemId: string;
-    serialNumber: number;
-    txId: string;
-  } | null;
+  lastUsedItem?: ItemUsedEvent | null;
 }
 
 export interface ScoutItemResult {
@@ -36,13 +42,12 @@ export interface ScoutItemResult {
   itemId: string;
 }
 
-export type UserSubscriptionCallback = (user: CurrentUserSession) => void;
-import { WebRTCPresence } from './webRTCPresence';
+export type UserSubscriptionCallback = (user: Readonly<CurrentUserSession>) => void;
 
 export class CurrentUserManager {
   private static instance: CurrentUserManager | null = null;
 
-  private config: BlsquiConfig = {
+  private config: Required<BlsquiConfig> = {
     appId: '',
     publisherAddress: '',
     network: 'testnet'
@@ -56,15 +61,15 @@ export class CurrentUserManager {
     dashboardOpen: false
   };
 
-  private presence = new WebRTCPresence();
+  private readonly presence = new WebRTCPresence();
+  private readonly subscribers = new Set<UserSubscriptionCallback>();
+
   private sessionChannelKey: string | null = null;
   private currentSecureRoom: string | null = null;
-  private subscribers: Set<UserSubscriptionCallback> = new Set();
   private dashboardWindow: Window | null = null;
   private activeIframeContainer: HTMLElement | null = null;
   private activeIframeWindow: Window | null = null;
-  private isListeningToDashboard: boolean = false;
-  private heartbeatInterval: any = null;
+  private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 
   private constructor() {
     this.initPresenceListener();
@@ -160,9 +165,21 @@ export class CurrentUserManager {
     const isTestnet = this.config.network !== 'mainnet';
     const baseUrl = isTestnet ? 'https://lab.blsqui.net' : 'https://wallet.blsqui.net';
 
+    // Generate or retrieve the ephemeral 256-bit random channel key
+    const channelKey = this.getOrCreateChannelKey();
+
+    // Connect the game presence to Pion Hub using the channelKey as room ID
+    if (this.currentSecureRoom !== channelKey) {
+      this.currentSecureRoom = channelKey;
+      console.log(`[SDK] Connecting game presence to secure room: ${channelKey.slice(0, 8)}...`);
+      this.presence.init(channelKey, 'game');
+    }
+
     const params = new URLSearchParams();
     if (this.config.appId) params.set('app_id', this.config.appId);
     if (this.config.publisherAddress) params.set('publisher_address', this.config.publisherAddress);
+    if (this.userState.addr) params.set('addr', this.userState.addr);
+    params.set('channel_key', channelKey);
 
     const fullUrl = `${baseUrl}/?${params.toString()}`;
 
@@ -181,7 +198,29 @@ export class CurrentUserManager {
       `width=${width},height=${height},left=${left},top=${top},menubar=no,status=no,resizable=yes`
     );
 
+    this.setState({ dashboardOpen: true });
     return this.dashboardWindow;
+  }
+
+  /**
+   * Dispatches data to Dashboard:
+   */
+  public sendToDashboard(message: any): void {
+    const channelKey = this.sessionChannelKey || '';
+    const payload = {
+      ...message,
+      role: message.role || 'game',
+      channel_key: channelKey,
+      room: channelKey,
+      player: message.player || (this.userState.addr ? this.userState.addr.toLowerCase() : ''),
+      timestamp: message.timestamp || Date.now()
+    };
+
+    // Prioritize WebRTC DataChannel
+    if (this.presence && this.presence.state.connected) {
+      this.presence.send(payload);
+      return;
+    }
   }
 
   public summonDashboard(): void {
@@ -284,19 +323,6 @@ export class CurrentUserManager {
     }
   }
 
-  public postMessageToDashboard(message: any, targetOrigin: string = '*'): void {
-    if (this.activeIframeWindow) {
-      this.activeIframeWindow.postMessage(message, targetOrigin);
-    } else if (this.dashboardWindow && !this.dashboardWindow.closed) {
-      this.dashboardWindow.postMessage(message, targetOrigin);
-    } else {
-      const iframeEl = document.querySelector('iframe[title="Blsqui Equip Stage"]') as HTMLIFrameElement | null;
-      if (iframeEl && iframeEl.contentWindow) {
-        iframeEl.contentWindow.postMessage(message, targetOrigin);
-      }
-    }
-  }
-
   private startHostPresenceHeartbeat(): void {
     this.stopHostPresenceHeartbeat();
 
@@ -316,14 +342,26 @@ export class CurrentUserManager {
     }
   }
 
+  public triggerItemAction(itemId: string): void {
+    if (!itemId) {
+      console.warn('[BlsquiSDK] triggerItemAction called without an itemId');
+      return;
+    }
+
+    console.log(`[BlsquiSDK] Triggering item action for: ${itemId}`);
+    this.sendToDashboard({
+      type: 'TRIGGER_ITEM_ACTION',
+      itemId
+    });
+  }
+
   private sendPresenceLiveSignal(): void {
-    this.postMessageToDashboard({
+    this.sendToDashboard({
       type: 'PRESENCE_PONG',
       role: 'game',
       player: this.userState.addr ? this.userState.addr.toLowerCase() : '',
       status: 'LIVE',
-      game_online: true,
-      timestamp: Date.now()
+      game_online: true
     });
   }
 
@@ -421,8 +459,17 @@ export class CurrentUserManager {
       }
     `;
 
+    function toBase64(str: string): string {
+        const bytes = new TextEncoder().encode(str);
+        let binary = '';
+        for (let i = 0; i < bytes.byteLength; i++) {
+            binary += String.fromCharCode(bytes[i]);
+        }
+        return btoa(binary);
+    }
     try {
-      const scriptBase64 = btoa(cadenceScript);
+
+      const scriptBase64 = toBase64(cadenceScript);
 
       const res = await fetch(`${accessNode}/v1/scripts`, {
         method: 'POST',
@@ -430,9 +477,9 @@ export class CurrentUserManager {
         body: JSON.stringify({
           script: scriptBase64,
           arguments: [
-            btoa(JSON.stringify({ type: 'Address', value: cleanPublisher })),
-            btoa(JSON.stringify({ type: 'Address', value: cleanTarget })),
-            btoa(JSON.stringify({ type: 'String', value: appId }))
+            toBase64(JSON.stringify({ type: 'Address', value: cleanPublisher })),
+            toBase64(JSON.stringify({ type: 'Address', value: cleanTarget })),
+            toBase64(JSON.stringify({ type: 'String', value: appId }))
           ]
         })
       });
