@@ -132,13 +132,13 @@
 
   const SHOP_ITEMS: ShopItem[] = [
     {
-      id: 'shd_valkyrie_aegis_2',
+      id: 'shd_valkyrie_aegis_b',
       name: 'Valkyrie Shield Ⅱ',
       image: 'https://assets.blsqui.net/items/0x2f13c512df0b0ad7/valkyrie-vanguard/shd_valkyrie_aegis_2.webp',
       price: '5.0 FLOW'
     },
     {
-      id: 'wpn_dragon_piercer_2',
+      id: 'wpn_dragon_piercer_b',
       name: 'Dragon Piercer II',
       image: 'https://assets.blsqui.net/items/0x2f13c512df0b0ad7/valkyrie-vanguard/dragon_piercer.webp',
       price: '10.0 FLOW'
@@ -184,7 +184,7 @@
           console.log(sealedReceipt);
 
           break;
-        case "wpn_dragon_piercer_2":
+        case "wpn_dragon_piercer_b":
           sealedReceipt = await BlsquiSDK.requestTransaction({
               isTestnet: true,
               flixId: '351d9d6f23ebe5ddbe9bf5b4f937a352c5caaa6a4439b5e464f3b16c1d671472',
@@ -193,7 +193,7 @@
           console.log(sealedReceipt);
 
           break;
-        case "shd_valkyrie_aegis_2":
+        case "shd_valkyrie_aegis_b":
 
           sealedReceipt = await BlsquiSDK.requestTransaction({
               isTestnet: true,
