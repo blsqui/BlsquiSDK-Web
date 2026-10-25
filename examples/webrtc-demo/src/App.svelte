@@ -81,8 +81,8 @@
   }
 
   /** ③ triggerItemAction Sample */
-  const WEAPON_ITEM_ID = 'wpn_dragon_piercer_2';
-  const SHIELD_ITEM_ID = 'shd_valkyrie_aegis_2';
+  const WEAPON_ITEM_ID = 'wpn_dragon_piercer_b';
+  const SHIELD_ITEM_ID = 'shd_valkyrie_aegis_b';
   const equippedIds = $derived(new Set(slotItems.map((s) => s.itemId)));
   const isWeaponEquipped = $derived(equippedIds.has(WEAPON_ITEM_ID));
   const isShieldEquipped = $derived(equippedIds.has(SHIELD_ITEM_ID));
@@ -128,7 +128,6 @@
     name: string;
     image: string;
     price: string;
-    flixId: string;
   }
 
   const SHOP_ITEMS: ShopItem[] = [
@@ -136,29 +135,25 @@
       id: 'shd_valkyrie_aegis_2',
       name: 'Valkyrie Shield Ⅱ',
       image: 'https://assets.blsqui.net/items/0x2f13c512df0b0ad7/valkyrie-vanguard/shd_valkyrie_aegis_2.webp',
-      price: '5.0 FLOW',
-      flixId: 'b43f88e309922dc73bbd577773adc0f10aa12912ae4718113c0a844f76b0d4a4'
+      price: '5.0 FLOW'
     },
     {
       id: 'wpn_dragon_piercer_2',
       name: 'Dragon Piercer II',
       image: 'https://assets.blsqui.net/items/0x2f13c512df0b0ad7/valkyrie-vanguard/dragon_piercer.webp',
-      price: '10.0 FLOW',
-      flixId: 'b43f88e309922dc73bbd577773adc0f10aa12912ae4718113c0a844f76b0d4a4'
+      price: '10.0 FLOW'
     },
     {
       id: 'wpn_dragon_piercer',
       name: 'Dragon Piercer',
       image: 'https://assets.blsqui.net/items/0x2f13c512df0b0ad7/valkyrie-vanguard/wpn_dragon_piercer.webp',
-      price: '7.0 FLOW',
-      flixId: 'b43f88e309922dc73bbd577773adc0f10aa12912ae4718113c0a844f76b0d4a4'
+      price: '7.0 FLOW'
     },
     {
       id: 'shd_valkyrie_aegis',
       name: 'Valkyrie Shield',
       image: 'https://assets.blsqui.net/items/0x2f13c512df0b0ad7/valkyrie-vanguard/shd_valkyrie_aegis.webp',
-      price: '4.0 FLOW',
-      flixId: 'b43f88e309922dc73bbd577773adc0f10aa12912ae4718113c0a844f76b0d4a4'
+      price: '4.0 FLOW'
     }
   ];
 
@@ -190,7 +185,6 @@
 
           break;
         case "wpn_dragon_piercer_2":
-
           sealedReceipt = await BlsquiSDK.requestTransaction({
               isTestnet: true,
               flixId: '351d9d6f23ebe5ddbe9bf5b4f937a352c5caaa6a4439b5e464f3b16c1d671472',
@@ -200,6 +194,13 @@
 
           break;
         case "shd_valkyrie_aegis_2":
+
+          sealedReceipt = await BlsquiSDK.requestTransaction({
+              isTestnet: true,
+              flixId: 'dc489b8c50faecaa7a185a5ebeac189a1cfdb8a1168b95139d53c2bcbfd979e9',
+              useDefaultModal: false
+          });
+          console.log(sealedReceipt);
 
           break;
       }
