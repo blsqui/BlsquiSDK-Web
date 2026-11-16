@@ -11,6 +11,8 @@ export interface WebRTCPresenceState {
 export type StateListener = (state: WebRTCPresenceState) => void;
 
 export type TransactionRequestHandler = (params: {
+  publisherAddress: string;
+  appId: string;
   flixId: string;
   itemId: string;
   serialNumber: number;
@@ -50,7 +52,7 @@ export class WebRTCPresence {
    */
   subscribeState(fn: StateListener): () => void {
     this.stateListeners.add(fn);
-    fn(this._state); // Immediate trigger
+    fn(this._state);
     return () => this.stateListeners.delete(fn);
   }
 
@@ -58,6 +60,35 @@ export class WebRTCPresence {
     this._state = { ...this._state, ...partial };
     for (const listener of this.stateListeners) {
       listener(this._state);
+    }
+  }
+
+  /**
+   * Sends a PRESENCE_PING over the DataChannel to request state sync from dashboard.
+   */
+  public pingDashboard(): void {
+    if (!this.dc || this.dc.readyState !== 'open') {
+      console.warn('[Blsqui WebRTC] Cannot ping: DataChannel is not open.');
+      return;
+    }
+
+    this.send({
+      type: 'PRESENCE_PING',
+      role: 'game',
+      player: this.activeAddress ? this.activeAddress.toLowerCase() : '',
+      timestamp: Date.now()
+    });
+  }
+
+  /**
+   * Checks connection status and re-establishes if disconnected.
+   */
+  public verifyOrReconnect(playerAddress: string): void {
+    if (this.dc && this.dc.readyState === 'open' && this._state.connected) {
+      this.pingDashboard();
+    } else {
+      console.log('[Blsqui WebRTC] Connection inactive on Hub open. Re-initializing...');
+      this.init(playerAddress, 'game');
     }
   }
 
@@ -77,6 +108,8 @@ export class WebRTCPresence {
     this.isConnecting = true;
     this.activeAddress = cleanAddr;
     this.cleanup();
+    this.isConnecting = true;
+    this.activeAddress = cleanAddr;
 
     try {
       this.pc = new RTCPeerConnection({
@@ -149,6 +182,8 @@ export class WebRTCPresence {
     dc.onopen = () => {
       console.log('✅ [WebRTC DataChannel OPEN]');
       this.updateState({ connected: true });
+      // Immediately request state sync from dashboard on channel open
+      this.pingDashboard();
     };
 
     dc.onclose = () => {
@@ -210,26 +245,33 @@ export class WebRTCPresence {
       });
     }
 
-    // Direct Execution
+    // Scoped Item Use Execution
     if (msg.type === 'ITEM_USE_REQUESTED') {
-      const { itemId, serialNumber, flixId, isTestnet } = msg;
+      const { BlsquiSDK, currentUser } = await import('./index');
+      const cfg = currentUser.getConfig();
 
-      console.log(`[SDK] Executing durability consumption for ${itemId} #${serialNumber}`);
+      const reqPublisher = String(msg.publisherAddress || msg.publisher_address || cfg.publisherAddress || '').trim();
+      const reqAppId = String(msg.appId || msg.app_id || cfg.appId || '').trim();
+      const itemId = String(msg.itemId || msg.item_id || '');
+      const serialNumber = Number(msg.serialNumber ?? msg.serial_number ?? 0);
+      const flixId = String(msg.flixId || msg.flix_id || '');
+      const isTestnet = msg.isTestnet ?? (cfg.network !== 'mainnet');
+
+      console.log(`[SDK] Executing durability consumption -> Publisher: ${reqPublisher}, App: ${reqAppId}, Item: ${itemId} #${serialNumber}`);
 
       try {
-        const { BlsquiSDK } = await import('./index');
-
         const result: any = await BlsquiSDK.requestTransaction({
-          isTestnet: isTestnet ?? true,
-          flixId: flixId,
+          isTestnet,
+          flixId,
           args: {
-            itemId: itemId,
-            serialNumber: Number(serialNumber)
+            publisherAddress: reqPublisher,
+            appId: reqAppId,
+            itemId,
+            serialNumber
           },
           useDefaultModal: false
         });
 
-        // Check seal status
         const isSuccess = result?.status === 'SEALED' || Boolean(result?.txId);
 
         if (isSuccess) {
@@ -239,16 +281,16 @@ export class WebRTCPresence {
           this.send({
             type: 'ITEM_USED',
             itemId,
-            serialNumber: Number(serialNumber),
+            serialNumber,
             txId: String(result?.txId),
             timestamp: Date.now()
           });
 
-          // Also dispatch to local listeners so currentUser / game can react
+          // Dispatch to local listeners so currentUser / game can react
           this.handleIncomingMessage({
             type: 'ITEM_USE_COMPLETED',
             itemId,
-            serialNumber: Number(serialNumber),
+            serialNumber,
             txId: String(result?.txId)
           });
         }

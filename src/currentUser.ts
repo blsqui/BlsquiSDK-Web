@@ -168,12 +168,9 @@ export class CurrentUserManager {
     // Generate or retrieve the ephemeral 256-bit random channel key
     const channelKey = this.getOrCreateChannelKey();
 
-    // Connect the game presence to Pion Hub using the channelKey as room ID
-    if (this.currentSecureRoom !== channelKey) {
-      this.currentSecureRoom = channelKey;
-      console.log(`[SDK] Connecting game presence to secure room: ${channelKey.slice(0, 8)}...`);
-      this.presence.init(channelKey, 'game');
-    }
+    // Verify active DataChannel or initiate WebRTC presence using channelKey as room ID
+    this.currentSecureRoom = channelKey;
+    this.presence.verifyOrReconnect(channelKey);
 
     const params = new URLSearchParams();
     if (this.config.appId) params.set('app_id', this.config.appId);
@@ -371,6 +368,9 @@ export class CurrentUserManager {
 
       // Live Heartbeat / Ping response
       if (msg.type === 'PRESENCE_PING') {
+        if (!this.userState.addr && msg.player) {
+          this.userState.addr = String(msg.player).trim();
+        }
         this.presence.send({
           type: 'PRESENCE_PONG',
           role: 'game',
