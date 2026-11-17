@@ -3,6 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/@blsqui/sdk-web.svg)](https://www.npmjs.com/package/@blsqui/sdk-web)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Flow Blockchain](https://img.shields.io/badge/Flow-Blockchain-00EF8B?logo=flow&logoColor=black)](https://flow.com/)
+[![Blsqui Web SDK on StartupScores](https://startupscores.com/badge/blsqui-web-sdk.svg?style=shield&v=combo&theme=dark)](https://startupscores.com/open-source/blsqui-web-sdk)
 
 Official Web SDK for **Blsqui** — Enabling Flow blockchain Passkey authentication, FLIX execution, and in-game transaction dialogs for web games and interactive applications.
 
